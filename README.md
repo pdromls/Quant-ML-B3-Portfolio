@@ -12,58 +12,81 @@ O foco metodológico do projeto concentra-se na integridade científica:
 
 ---
 
-## Terminal Web Interativo (Streamlit)
+## Guia Completo de Uso do Terminal Web (Streamlit)
 
-O projeto inclui uma aplicação web analítica desenvolvida em Streamlit (`app.py`), permitindo auditoria visual, monitoramento de carteiras recomendadas e inspeção interativa de resultados.
+O projeto disponibiliza uma interface visual analítica desenvolvida em Streamlit (`app.py`), permitindo auditoria forense, simulação e acompanhamento de carteiras recomendadas.
 
-### Execução da Aplicação
+### 1. Inicialização da Aplicação
+No terminal do seu ambiente (com as dependências instaladas), execute:
 ```bash
 streamlit run app.py
 ```
-O servidor local iniciará e disponibilizará o dashboard no endereço `http://localhost:8501`.
+A aplicação abrirá automaticamente no navegador em `http://localhost:8501`.
 
-### Estrutura das Abas do Terminal
+### 2. Controles Globais na Barra Lateral (Sidebar)
+A barra lateral permite configurar os parâmetros mestres de toda a sessão:
+- Fonte de Dados:
+  - Base Local Higienizada (2012-2026): Opção padrão e recomendada. Carrega instantaneamente a base de dados tratada de 41 ações do IBrX 50, contendo 3.667 pregões auditados até a data presente.
+  - API Yahoo Finance (Ao Vivo): Permite sincronizar cotações em tempo real da B3. Conta com o botão "Atualizar Cotações via API" para baixar novas cotações e "Resetar API" para restaurar a base local.
+- Modelo de Machine Learning:
+  - Regressão Ridge: Modelo linear regularizado com penalidade L2.
+  - XGBoost: Algoritmo de gradient boosted trees com divisão por profundidade (depth-wise).
+  - LightGBM: Algoritmo de gradient boosted trees com divisão ótima por folha (leaf-wise).
+- Política de Ponderação de Carteira:
+  - Soft Weighting (Top 15 com decaimento linear): Aloca pesos decrescentes proporcionais (12,50% para o 1º colocado até 0,83% para o 15º), mitigando sensibilidade a empates e empurrando o retorno para +1.568,85% com Sharpe 1,02.
+  - Hard Cut (Top 10 equiponderado 1/N com histerese): Aloca 10% fixos para as 10 melhores ações, aplicando zona morta de ranking para evitar giro excessivo.
+
+---
+
+### 3. Navegação entre as Abas do Terminal
 
 #### Aba 1: Visão Geral e Curvas Históricas Acumuladas (2015–2026)
-- Gráfico interativo com a evolução do patrimônio líquido acumulado (curva composta) dos três modelos de Machine Learning (Regressão Ridge, XGBoost, LightGBM) frente aos benchmarks oficiais (Buy & Hold 1/N e Ibovespa BOVA11).
-- Tabela executiva de métricas financeiras institucionais: Retorno Acumulado (%), Taxa Composta Anual de Crescimento (CAGR % a.a.), Volatilidade Anualizada (%), Índice de Sharpe, Drawdown Máximo (%), Taxa de Sucesso Mensal (%) e Alpha Anualizado vs. Universo e vs. Ibovespa.
-- Controles laterais para alternar entre as políticas de ponderação (Soft Weighting Top 15 vs. Hard Cut Top 10) e recortar períodos temporais.
+Objetivo: Avaliar a performance de longo prazo das estratégias contra o mercado.
+- Gráfico Patrimonial Composto: Exibe a curva de capital acumulada comparando os três modelos de Machine Learning (Ridge, XGBoost e LightGBM) contra os dois índices de mercado (Buy & Hold 1/N e Ibovespa BOVA11).
+- Tabela Executiva de Métricas Institucionais: Apresenta lado a lado métricas auditadas de Retorno Acumulado (%), CAGR (% a.a.), Volatilidade Anualizada (%), Índice de Sharpe, Drawdown Máximo (%), Taxa de Sucesso Mensal (%) e Alpha Excedente vs. Mercado.
+- Controles de Período: Permite ajustar a janela temporal de visualização entre 2015 e 2026.
 
 #### Aba 2: Previsão vs. Realidade (Auditoria de Decisões e Calendário de Pregões)
-Esta aba disponibiliza ferramentas para auditar o que cada modelo previu em relação ao que efetivamente ocorreu no mercado:
+Objetivo: Inspecionar exatamente o que cada modelo recomendou comprar e verificar o que aconteceu no mercado real.
+
+Esta aba possui 4 modos de inspeção selecionáveis via radio button:
 
 1. Visão Compacta do Ano Corrente (YTD 2026):
-   - Painel com 5 indicadores de retorno acumulado no ano de 2026 para os três modelos e os benchmarks de mercado.
-   - Gráfico de rentabilidade mensal acumulada de janeiro a outubro de 2026.
-   - Gráfico de barras agrupadas comparando mês a mês o retorno do modelo selecionado contra o Buy & Hold e o Ibovespa.
-   - Tabela de auditoria mensal com o retorno realizado, retornos dos índices, Alpha mensal e taxa de acerto.
+   - Exibe 5 cartões KPI consolidados do ano corrente (Ridge, XGBoost, LightGBM, Buy & Hold Universo e Ibovespa).
+   - Apresenta o gráfico de evolução de capital ao longo de 2026.
+   - Apresenta gráfico de barras com os retornos mês a mês em 2026 para auditar a consistência das previsões.
+   - Tabela detalhada mês a mês com retorno do modelo, retorno do benchmark, Alpha e taxa de acerto.
 
 2. Inspeção Pontual por Data Específica (Calendário de Pregões Diários):
-   - Seletor de data interativo em formato de calendário (DD/MM/AAAA) abrangendo todo o período de 2015 a 2026.
-   - Validação automática de dias úteis da B3: caso uma data sem pregão (final de semana ou feriado) seja selecionada, o sistema detecta a indisponibilidade e ajusta automaticamente para o pregão imediatamente anterior com cotação oficial.
-   - Barra de navegação rápida com os botões [Pregão Anterior], [Próximo Pregão] e [Hoje / Mais Recente], permitindo navegar exclusivamente entre dias de negociação real.
-   - Apuração do preço de entrada no primeiro pregão do mês (T0) e do preço de fechamento no pregão selecionado (T).
-   - Cálculo do retorno acumulado de cada ação até a data escolhida, da contribuição ponderada para o portfólio e do retorno dos benchmarks (Buy & Hold e Ibovespa) no mesmo intervalo.
-   - Gráfico de barras com código de cores: barras verdes para ações que superaram o Buy & Hold do Universo e barras vermelhas para ações com retorno inferior ao índice de referência.
-   - Tabela detalhada com rank, ticker, score previsto, peso percentual, preço de entrada, preço atual, retorno percentual e contribuição.
-   - Suporte ao modo individual ou comparativo lado a lado dos três modelos no mesmo pregão.
+   - Seletor de Calendário (DD/MM/AAAA): Permite clicar e abrir o calendário interativo para selecionar qualquer dia específico da série histórica (2015 a 2026).
+   - Trava e Snap Inteligente de Dias Úteis: Se o usuário selecionar um sábado, domingo ou feriado da B3, o sistema exibe uma mensagem informativa e ajusta automaticamente o cálculo para o pregão imediatamente anterior com cotação oficial.
+   - Barra de Navegação Rápida: Botões [Pregão Anterior], [Próximo Pregão] e [Hoje / Mais Recente] para avançar ou recuar dia a dia apenas entre pregões reais da bolsa.
+   - Apuração de Cotações Reais: Compara o preço de compra no 1º pregão do mês (data base da recomendação T0) com o preço de fechamento no dia selecionado (T).
+   - Métricas do Dia: Calcula o retorno acumulado da ação até aquele dia, a contribuição ponderada para a carteira, o retorno do Buy & Hold do Universo e o retorno do Ibovespa (BOVA11) no mesmo período.
+   - Gráfico de Barras com Cores Semânticas: Ações com retorno superior ao benchmark são coloridas em verde; ações com retorno inferior são coloridas em vermelho. Inclui linhas de referência horizontais para Buy & Hold e Ibovespa.
+   - Modo Comparativo Lado a Lado: Se a opção "Comparar os 3 Modelos Lado a Lado" for selecionada, o dashboard renderiza o confronto simultâneo de Ridge, XGBoost e LightGBM na data escolhida.
 
-3. Previsões Mês a Mês em 2026 e Histórico Multi-Ano Completo (2015–2026):
-   - Seleção de qualquer mês da série histórica de 12 anos para inspecionar as recomendações geradas no primeiro dia útil e o resultado apurado no fechamento mensal.
+3. Previsões Mês a Mês em 2026:
+   - Seletor dropdown para auditar qualquer mês fechado ou em andamento de 2026, exibindo a alocação emitida no primeiro pregão e o resultado apurado.
+
+4. Histórico Multi-Ano Completo (2015–2026):
+   - Seletor dropdown cobrindo todos os 142 meses da série temporal para análise histórica individual.
 
 #### Aba 3: Explicabilidade e Importância Econômica dos Fatores
-- Análise de contribuição dos 12 atributos preditivos:
+Objetivo: Compreender os fundamentos econômicos por trás das decisões dos modelos.
+- Gráficos de Barras Horizontais:
   - Regressão Ridge: Coeficientes Beta Padronizados expressos em basis points (bps).
-  - XGBoost: Ganho de informação percentual (Gain %) nas divisões das árvores.
-  - LightGBM: Ganho percentual por folha (leaf-wise split).
-- Interpretação econômica e financeira dos coeficientes:
-  - ret_63d (positivo): Captura o momentum trimestral clássico.
-  - ret_21d (negativo): Reflete a reversão à média mensal (short-term reversal), penalizando ativos que subiram excessivamente no curto prazo.
-  - vol_21d (negativo): Penaliza ativos com volatilidade extrema, reduzindo o risco de cauda e drawdowns severos.
+  - XGBoost: Importância por ganho de informação (Gain %) em nível de nó.
+  - LightGBM: Importância por ganho percentual por folha (leaf-wise split).
+- Interpretação Financeira dos Fatores:
+  - ret_63d positivo: Captura o efeito Momentum trimestral da literatura quantitativa clássica.
+  - ret_21d negativo: Reflete a Reversão à Média mensal (Short-Term Reversal), penalizando ativos sobrecomprados.
+  - vol_21d negativo: Penaliza ações com alta volatilidade, protegendo a carteira contra riscos de cauda.
 
 #### Aba 4: Data Quality Assurance e Validação de Integridade
-- Ferramenta de auditoria formal das matrizes de cotação da B3.
-- Verificação automatizada de ausência de nulos, valores infinitos, preços não positivos e integridade de datas (base 100% aprovada).
+Objetivo: Auditar a base de dados subjacente.
+- Botão "Executar Auditoria de Dados Agora": Dispara um teste automatizado formal em todas as matrizes de preço e volume.
+- Validação em tempo real de ausência de valores nulos, infinitos, preços não positivos e sincronismo temporal (status: 100% aprovado).
 
 ---
 
@@ -152,6 +175,25 @@ Resultados apurados em 142 rebalanceamentos mensais com retreino móvel anual:
 Vantagens da Ponderação Suave (Soft Weighting):
 - Redução do Risco Extremo: O Max Drawdown do XGBoost recua de -45,89% para -40,82%, e o da Regressão Ridge recua de -39,34% para -35,23%.
 - Eliminação do Efeito Falésia (Cliff Edge): Em vez de alocar 10% para o 10º colocado e 0% para o 11º, o peso decai linearmente (12,5% -> 11,7% -> ... -> 0,8%), neutralizando a sensibilidade a empates e à aleatoriedade estocástica nas divisões de nós de árvores.
+
+---
+
+### 4. Visualizações Geradas pelo Pipeline
+
+#### Importância dos Atributos Técnicos (Ganho de Informação e Coeficientes Beta)
+![Importância dos Atributos](outputs/figures/01_feature_importance.png)
+
+#### Resumo de Métricas de Machine Learning no Teste Puro Out-of-Sample
+![Métricas de Teste](outputs/figures/02_test_metrics_summary.png)
+
+#### Retorno Acumulado Composto do Top 10 vs. Buy & Hold do Universo
+![Retorno Top 10 vs Universo](outputs/figures/03_top10_cumulative_alpha.png)
+
+#### Simulação Walk-Forward (12 Anos): Retreino Periódico vs. Modelos Congelados
+![Walk-Forward vs Congelado](outputs/figures/04_walkforward_vs_frozen_comparison.png)
+
+#### Comparação de Políticas de Portfólio: Hard Cut (Top 10) vs. Soft Weighting (Top 15)
+![Hard Cut vs Soft Weighting](outputs/figures/05_weighting_schemes_comparison.png)
 
 ---
 
