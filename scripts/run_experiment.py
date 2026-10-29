@@ -1,7 +1,12 @@
 """
-Main CLI entrypoint to reproduce the Quantitative Machine Learning Experiment on the B3 IBrX 50 Universe:
-  - Part A: Data Science Evaluation (Chronological 70% Train / 20% Val / 10% Test with 21-day Purge)
-  - Part B: Event-Driven Portfolio Backtesting (Frozen Out-of-Sample 10% & 11-Year Walk-Forward 2015-2025)
+Main CLI entrypoint for the Quantitative Machine Learning Experiment on the B3 IBrX 50 Universe:
+  1. Data Loading & Universe Inspection
+  2. Causal Feature Engineering & Cross-Sectional Standardization
+  3. Chronological 70% Train / 20% Val / 10% Test Split with 21-day Purge (Embargo)
+  4. Model Training & Hyperparameter Selection (Ridge L2 Baseline, XGBoost, LightGBM)
+  5. Comprehensive ML Evaluation (Regression, Ranking/IC, Directional Classification)
+  6. Top-10 Stock Selection Factor Performance vs. Equal-Weighted Universe (Buy & Hold baseline)
+  7. Feature Importance Analysis (Gain % and Standardized Coefficients)
 """
 
 from __future__ import annotations
@@ -9,6 +14,7 @@ from __future__ import annotations
 from pathlib import Path
 import sys
 
+import numpy as np
 import pandas as pd
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -16,24 +22,18 @@ sys.path.insert(0, str(ROOT_DIR / "src"))
 
 from quant_ml_b3 import (
     FEATURE_COLS,
-    BuyAndHoldStrategy,
-    CrossSectionalMLStrategy,
-    benchmark_equity_curve,
     build_ml_panel,
-    compute_financial_metrics,
+    evaluate_top_k_cumulative_performance,
     extract_feature_importance,
     fit_ml_model,
-    load_benchmark_series,
     load_local_market_data,
-    run_backtest,
+    predict_ml_model,
     split_temporal_70_20_10,
 )
 from quant_ml_b3.plotting import (
-    plot_drawdown_curve,
-    plot_equity_and_drawdown,
-    plot_equity_curve,
     plot_feature_importance,
-    plot_oos_vs_walkforward_bars,
+    plot_test_metrics_summary,
+    plot_top_k_cumulative_alpha,
 )
 
 
@@ -45,19 +45,16 @@ def main() -> None:
     figures_dir.mkdir(parents=True, exist_ok=True)
 
     print("=" * 78)
-    print("1. LOADING B3 IBrX 50 HIGH-LIQUIDITY UNIVERSE")
+    print("1. CARREGAMENTO DO UNIVERSO B3 (IBrX 50 - 41 ACOES DE ALTA LIQUIDEZ)")
     print("=" * 78)
     market_full = load_local_market_data(data_dir)
     print(
-        f"Universe loaded: {len(market_full.tickers)} stocks x {len(market_full.dates)} trading days "
-        f"({market_full.dates[0].date()} to {market_full.dates[-1].date()})\n"
+        f"Universo carregado: {len(market_full.tickers)} acoes x {len(market_full.dates)} pregoes "
+        f"({market_full.dates[0].date()} a {market_full.dates[-1].date()})\n"
     )
 
-    # ==========================================================================
-    # PART A: DATA SCIENCE EVALUATION (CHRONOLOGICAL 70 / 20 / 10 + 21D PURGE)
-    # ==========================================================================
     print("=" * 78)
-    print("2. CHRONOLOGICAL 70% TRAIN / 20% VAL / 10% TEST SPLIT WITH 21-DAY PURGE")
+    print("2. ENGENHARIA DE ATRIBUTOS CAUSAIS E DIVISAO CRONOLOGICA COM PURGA (21 DIAS)")
     print("=" * 78)
     market_15_25 = market_full.slice_dates("2015-01-02", "2025-12-31")
     panel_ml = build_ml_panel(market_15_25, horizon=21, step=5)
@@ -66,26 +63,29 @@ def main() -> None:
     tr_p = splits.meta["train_period"]
     va_p = splits.meta["val_period"]
     te_p = splits.meta["test_period"]
-    print(f"Total cross-sectional observations (date x stock): {len(panel_ml):,} rows")
+    print(f"Total de observacoes no painel (data x acao): {len(panel_ml):,} linhas")
     print(
-        f" - Train (70%)     : {tr_p[0].date()} to {tr_p[1].date()} "
-        f"({splits.meta['n_dates_train']} dates | {len(splits.train):,} samples)"
+        f" - Treino (70%)     : {tr_p[0].date()} a {tr_p[1].date()} "
+        f"({splits.meta['n_dates_train']} datas | {len(splits.train):,} amostras)"
     )
     print(
-        f" - Validation (20%): {va_p[0].date()} to {va_p[1].date()} "
-        f"({splits.meta['n_dates_val']} dates | {len(splits.val):,} samples) [21d Purge]"
+        f" - Validacao (20%): {va_p[0].date()} a {va_p[1].date()} "
+        f"({splits.meta['n_dates_val']} datas | {len(splits.val):,} amostras) [Purga 21d]"
     )
     print(
-        f" - Test (10%)      : {te_p[0].date()} to {te_p[1].date()} "
-        f"({splits.meta['n_dates_test']} dates | {len(splits.test):,} samples) [21d Purge]\n"
+        f" - Teste Puro (10%) : {te_p[0].date()} a {te_p[1].date()} "
+        f"({splits.meta['n_dates_test']} datas | {len(splits.test):,} amostras) [Purga 21d]\n"
     )
 
+    print("=" * 78)
+    print("3. TREINAMENTO E SELECAO DE HIPERPARAMETROS NA VALIDACAO (20%)")
+    print("=" * 78)
     fit_ridge = fit_ml_model("ridge", splits, FEATURE_COLS, seed=42)
     fit_xgb = fit_ml_model("xgboost", splits, FEATURE_COLS, seed=42)
     fit_lgb = fit_ml_model("lightgbm", splits, FEATURE_COLS, seed=42)
 
-    print("Hyperparameters selected on Validation (20%):")
-    print(f" - Ridge Baseline : optimal lambda = {fit_ridge.best_params['best_lambda']}")
+    print("Hiperparametros otimizados via Rank IC na Validacao:")
+    print(f" - Ridge Baseline : lambda otimo = {fit_ridge.best_params['best_lambda']}")
     print(
         f" - XGBoost        : nrounds = {fit_xgb.best_params['best_iter']}, "
         f"max_depth = {fit_xgb.best_params['best_depth']}, eta = {fit_xgb.best_params['best_eta']}"
@@ -95,142 +95,75 @@ def main() -> None:
         f"num_leaves = {fit_lgb.best_params['best_leaves']}, lr = {fit_lgb.best_params['best_lr']}\n"
     )
 
+    # 4. Tabela de metricas consolidada
     metrics_ml_df = pd.concat(
         [fit_ridge.metrics_table, fit_xgb.metrics_table, fit_lgb.metrics_table],
         ignore_index=True,
     )
-    print("=== MACHINE LEARNING METRICS TABLE (70% TRAIN / 20% VAL / 10% TEST) ===")
+    print("=" * 78)
+    print("4. TABELA DE METRICAS DE MACHINE LEARNING (TREINO 70% / VAL 20% / TESTE 10%)")
+    print("=" * 78)
     print(metrics_ml_df.to_string(index=False))
     metrics_ml_df.to_csv(tables_dir / "ml_metrics_70_20_10.csv", index=False)
+    plot_test_metrics_summary(metrics_ml_df, figures_dir / "02_test_metrics_summary.png")
 
+    # 5. Importancia das features
     imp_df = extract_feature_importance(fit_ridge, fit_xgb, fit_lgb)
-    print("\n=== CROSS-SECTIONAL FEATURE IMPORTANCE ACROSS MODELS ===")
+    print("\n" + "=" * 78)
+    print("5. IMPORTANCIA DAS FEATURES NOS MODELOS (GAIN % E BETA PADRONIZADO)")
+    print("=" * 78)
     print(imp_df.to_string(index=False))
     imp_df.to_csv(tables_dir / "feature_importance.csv", index=False)
     plot_feature_importance(imp_df, figures_dir / "01_feature_importance.png")
 
-    # ==========================================================================
-    # PART B: EVENT-DRIVEN BACKTEST (2015-2025 WALK-FORWARD & 10% PURE OOS)
-    # ==========================================================================
+    # 6. Avaliacao Quantitativa de Selecao Top 10 vs. Buy & Hold (Universo Igualitario)
     print("\n" + "=" * 78)
-    print("3. EVENT-DRIVEN WALK-FORWARD BACKTEST (2015-2025 | 15 bps Transaction Cost)")
+    print("6. AVALIACAO DE SELECAO TOP 10 vs. BUY & HOLD (PARTICAO DE TESTE PURO 10%)")
     print("=" * 78)
-    cost_15bps = 0.0015
-    initial_capital = 100_000.0
-    start_wf = "2015-01-02"
-    end_wf = "2025-12-31"
 
-    bt_bh = run_backtest(BuyAndHoldStrategy(), market_full, cost_15bps, initial_capital, start_wf, end_wf)
-    bt_ridge = run_backtest(
-        CrossSectionalMLStrategy("ridge", top_k=10, retrain_every_months=12),
-        market_full,
-        cost_15bps,
-        initial_capital,
-        start_wf,
-        end_wf,
-    )
-    bt_xgb = run_backtest(
-        CrossSectionalMLStrategy("xgboost", top_k=10, retrain_every_months=12),
-        market_full,
-        cost_15bps,
-        initial_capital,
-        start_wf,
-        end_wf,
-    )
-    bt_lgb = run_backtest(
-        CrossSectionalMLStrategy("lightgbm", top_k=10, retrain_every_months=12),
-        market_full,
-        cost_15bps,
-        initial_capital,
-        start_wf,
-        end_wf,
-    )
+    # Predicoes de cada modelo no conjunto de teste puro
+    preds_ridge_test = predict_ml_model(fit_ridge, splits.test).to_numpy()
+    preds_xgb_test = predict_ml_model(fit_xgb, splits.test).to_numpy()
+    preds_lgb_test = predict_ml_model(fit_lgb, splits.test).to_numpy()
 
-    wf_results = [bt_bh, bt_ridge, bt_xgb, bt_lgb]
-    wf_rows = [{"strategy": r.strategy_name, **r.metrics} for r in wf_results]
-    curves_wf = {r.strategy_name: r.equity for r in wf_results}
+    perf_ridge = evaluate_top_k_cumulative_performance(splits.test, preds_ridge_test, top_k=10)
+    perf_xgb = evaluate_top_k_cumulative_performance(splits.test, preds_xgb_test, top_k=10)
+    perf_lgb = evaluate_top_k_cumulative_performance(splits.test, preds_lgb_test, top_k=10)
 
-    # Include passive ETF benchmark BRAX11
-    brax_series = load_benchmark_series(data_dir)
-    brax_eq = benchmark_equity_curve(brax_series, bt_bh.equity["date"], initial_capital=initial_capital)
-    brax_metrics = compute_financial_metrics(brax_eq, trades_df=None, initial_capital=initial_capital)
-    wf_rows.append({"strategy": "BRAX11 (Indice Passivo)", **brax_metrics})
-    curves_wf["BRAX11 (Indice Passivo)"] = brax_eq
+    perf_dict = {
+        "Ridge": perf_ridge,
+        "XGBoost": perf_xgb,
+        "LightGBM": perf_lgb,
+    }
 
-    df_wf = pd.DataFrame(wf_rows)
-    print(
-        df_wf[
-            [
-                "strategy",
-                "final_equity",
-                "total_return",
-                "annual_return",
-                "annual_vol",
-                "sharpe",
-                "max_drawdown",
-                "calmar",
-                "win_rate",
-            ]
-        ].to_string(index=False)
-    )
-    df_wf.to_csv(tables_dir / "backtest_walkforward_2015_2025.csv", index=False)
-    plot_equity_and_drawdown(curves_wf, figures_dir / "02_walkforward_equity_drawdown.png")
-    plot_equity_curve(curves_wf, figures_dir / "02_walkforward_equity.png")
-    plot_drawdown_curve(curves_wf, figures_dir / "03_walkforward_drawdown.png")
+    summary_rows = [
+        {
+            "Estrategia / Modelo": "Buy & Hold (Universo 1/N)",
+            "Retorno_Acumulado_pct": round(perf_ridge["universe_cumulative"].iloc[-1] * 100.0, 2),
+            "Alpha_vs_Mercado_pct": 0.0,
+        },
+        {
+            "Estrategia / Modelo": "ML Baseline: Regressao Ridge",
+            "Retorno_Acumulado_pct": round(perf_ridge["top_k_cumulative"].iloc[-1] * 100.0, 2),
+            "Alpha_vs_Mercado_pct": round(perf_ridge["alpha_cumulative"].iloc[-1] * 100.0, 2),
+        },
+        {
+            "Estrategia / Modelo": "ML: XGBoost (Top 10)",
+            "Retorno_Acumulado_pct": round(perf_xgb["top_k_cumulative"].iloc[-1] * 100.0, 2),
+            "Alpha_vs_Mercado_pct": round(perf_xgb["alpha_cumulative"].iloc[-1] * 100.0, 2),
+        },
+        {
+            "Estrategia / Modelo": "ML: LightGBM (Top 10)",
+            "Retorno_Acumulado_pct": round(perf_lgb["top_k_cumulative"].iloc[-1] * 100.0, 2),
+            "Alpha_vs_Mercado_pct": round(perf_lgb["alpha_cumulative"].iloc[-1] * 100.0, 2),
+        },
+    ]
+    summary_df = pd.DataFrame(summary_rows)
+    print(summary_df.to_string(index=False))
+    summary_df.to_csv(tables_dir / "top10_vs_universe_performance.csv", index=False)
 
-    print("\n" + "=" * 78)
-    print("4. PURE OUT-OF-SAMPLE BACKTEST (10% TEST WINDOW: NOV/2024 - DEC/2025)")
-    print("=" * 78)
-    start_oos = te_p[0]
-    end_oos = "2025-12-31"
-
-    bt_bh_oos = run_backtest(BuyAndHoldStrategy(), market_full, cost_15bps, initial_capital, start_oos, end_oos)
-    bt_ridge_oos = run_backtest(
-        CrossSectionalMLStrategy("ridge", top_k=10, retrain_every_months=0),
-        market_full,
-        cost_15bps,
-        initial_capital,
-        start_oos,
-        end_oos,
-    )
-    bt_xgb_oos = run_backtest(
-        CrossSectionalMLStrategy("xgboost", top_k=10, retrain_every_months=0),
-        market_full,
-        cost_15bps,
-        initial_capital,
-        start_oos,
-        end_oos,
-    )
-    bt_lgb_oos = run_backtest(
-        CrossSectionalMLStrategy("lightgbm", top_k=10, retrain_every_months=0),
-        market_full,
-        cost_15bps,
-        initial_capital,
-        start_oos,
-        end_oos,
-    )
-
-    oos_results = [bt_bh_oos, bt_ridge_oos, bt_xgb_oos, bt_lgb_oos]
-    df_oos = pd.DataFrame([{"strategy": r.strategy_name, **r.metrics} for r in oos_results])
-    print(
-        df_oos[
-            [
-                "strategy",
-                "final_equity",
-                "total_return",
-                "annual_return",
-                "annual_vol",
-                "sharpe",
-                "max_drawdown",
-                "win_rate",
-            ]
-        ].to_string(index=False)
-    )
-    df_oos.to_csv(tables_dir / "backtest_oos_test10pct.csv", index=False)
-
-    plot_oos_vs_walkforward_bars(df_oos, df_wf, figures_dir / "03_oos_vs_walkforward_profit.png")
-    plot_oos_vs_walkforward_bars(df_oos, df_wf, figures_dir / "04_oos_vs_walkforward_profit.png")
-    print(f"\nAll tables saved to {tables_dir} and figures saved to {figures_dir}!")
+    plot_top_k_cumulative_alpha(perf_dict, figures_dir / "03_top10_cumulative_alpha.png")
+    print(f"\nExperimento de ML concluido com sucesso! Figuras em {figures_dir} e tabelas em {tables_dir}.")
 
 
 if __name__ == "__main__":

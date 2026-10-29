@@ -1,138 +1,129 @@
-# Cross-Sectional Machine Learning & Event-Driven Backtesting on the B3 (IBrX 50)
+# Cross-Sectional Machine Learning para Seleção de Ações na B3 (IBrX 50)
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-2563EB?logo=python&logoColor=white)
-![XGBoost](https://img.shields.io/badge/Models-Ridge%20%7C%20XGBoost%20%7C%20LightGBM-059669)
-![Tests](https://img.shields.io/badge/Tests-Pytest%20Passing-10B981)
-![License](https://img.shields.io/badge/License-MIT-D97706)
+![Modelos](https://img.shields.io/badge/Modelos-Ridge%20%7C%20XGBoost%20%7C%20LightGBM-059669)
+![Testes](https://img.shields.io/badge/Testes-Pytest%20Passing-10B981)
+![Licença](https://img.shields.io/badge/Licen%C3%A7a-MIT-D97706)
 
-Um pipeline completo de **Ciência de Dados e Finanças Quantitativas** em Python para seleção *cross-sectional* de ações no mercado brasileiro (**B3 — Universo IBrX 50**, 2012–2025), integrando engenharia de atributos livre de *look-ahead bias*, divisão temporal com purga (*embargo*), avaliação estatística de *ranking* e um motor próprio de *backtesting* orientado a eventos com custos operacionais reais (`15 bps`).
+Um pipeline quantitativo completo de **Ciência de Dados e Machine Learning** em Python para seleção *cross-sectional* de ações no mercado brasileiro (**B3 — Universo IBrX 50**, 2012–2025).
 
----
-
-## Destaques do Projeto (Por que este repositório se destaca)
-
-1. **Prevenção Estrita de *Look-Ahead Bias* e Vazamento Temporal:**
-   - **Higienização do Universo B3:** Remoção de datas espúrias de feriados sem negociação na B3 e mascaramento de períodos pré-listagem (`volume == 0`) como `NaN`, evitando falsos retornos zero ou execuções irreais.
-   - **Engenharia Causal de *Features* ($\le t$):** 12 indicadores técnicos e estatísticos calculados estritamente até o fechamento do dia $t$, padronizados por *Z-score cross-sectional* a cada pregão (winsorizados em $[-4, +4]$).
-   - **Divisão Temporal 70/20/10 com Purga (*Embargo* de 21 Pregões):** Como o *target* preditivo mede o excesso de retorno nos **21 pregões seguintes** ($t \to t+21$), aplica-se uma zona de purga nas fronteiras `Treino -> Validação` e `Validação -> Teste` para garantir que nenhum rótulo futuro atravesse de uma partição para outra.
-
-2. **Modelagem e Controle de *Turnover* (Banda de Histerese):**
-   - Comparação sistemática entre **Regressão Linear Ridge ($L_2$ Baseline)**, **XGBoost** (*depth-wise boosting*) e **LightGBM** (*leaf-wise boosting*).
-   - Seleção mensal das **Top 10** ações com maior retorno relativo previsto, combinada a uma **banda de manutenção (histerese Top 20)**: ativos já em carteira que permanecem entre os 20 melhores do *ranking* não são substituídos, reduzindo drasticamente o giro desnecessário e a erosão por custos.
-
-3. **Motor de *Backtest* Orientado a Eventos Realista:**
-   - Sinais gerados no fechamento de $t$ são executados exclusivamente na **abertura ajustada de $t+1$**.
-   - Quantidades inteiras de ações (`floor`), venda antes da compra, proibição estrita de caixa negativo e dedução de **15 bps por operação** (`10 bps` corretagem + `5 bps` *slippage*).
+O foco central deste projeto é a integridade científica: engenharia de atributos estritamente causal (livre de *look-ahead bias*), divisão temporal cronológica com purga (*embargo*) para eliminar vazamento de rótulos futuros, otimização de hiperparâmetros na validação e confronto sistemático entre modelos lineares regularizados e algoritmos de *gradient boosting* (árvores *depth-wise* vs. *leaf-wise*).
 
 ---
 
-## Principais Resultados (Capital Inicial: R$ 100.000,00 | Líquido de 15 bps)
+## 🎯 Destaques Metodológicos
 
-| Estratégia / Benchmark | Teste Puro *Out-of-Sample* (10%: Nov/24–Dez/25, Modelo Congelado) | Walk-Forward Completo (2015–2025, Retreino Anual a cada 12m) |
-| :--- | :--- | :--- |
-| **ML: LightGBM (Top 10)** | `R$ 104.253` (`+4,25%` · `Win 65,1%`) | **`R$ 984.795`** (**`+884,80%`** · `23,55% a.a.` · `Sharpe 0,83` · `Win 67,7%`) |
-| **ML Baseline: Regressão Ridge** | **`R$ 136.091`** (**`+36,09%`** · `Sharpe 1,66` · `Win 75,3%`) | **`R$ 982.756`** (**`+882,76%`** · `23,52% a.a.` · `Sharpe 0,86` · `Win 69,4%`) |
-| **ML: XGBoost (Top 10)** | `R$ 116.019` (`+16,02%` · `Sharpe 0,67` · `Win 69,5%`) | **`R$ 902.868`** (**`+802,87%`** · `22,56% a.a.` · `Sharpe 0,80` · `Calmar 0,50`) |
-| **Buy & Hold 1/N (IBrX 50)** | `R$ 118.139` (`+18,14%` · `Sharpe 0,86`) | `R$ 770.108` (`+670,11%` · `20,77% a.a.` · `Sharpe 0,75` · `Calmar 0,43`) |
-| **BRAX11 (Índice Passivo ETF)** | — | `R$ 340.737` (`+240,74%` · `12,00% a.a.` · `Sharpe 0,51` · `Calmar 0,25`) |
+1. **Higienização de Dados Reais da B3 (`data_loader.py`):**
+   * **Filtro de Feriados Espúrios:** Remoção de datas com menos de 20 ações ativas (feriados municipais ou dias sem pregão oficial da B3).
+   * **Máscara de Pré-Listagem:** Ativos com volume zerado antes do início de sua liquidez real no IBrX 50 (ex.: `SUZB3` e `ENGI11`) são mascarados como `NaN`, impedindo falsos retornos de 0%.
+   * **Ajuste Contínuo:** Preços de abertura e fechamento ajustados pelo fator acumulado de dividendos e desdobramentos.
 
-> **Insight Quantitativo Central:**
-> - No **Teste Puro *Out-of-Sample* (modelo congelado por 14 meses sem retreino)**, a forte regularização linear da **Regressão Ridge ($L_2$)** evita sobreajuste a regimes transitórios e entrega **`+36,09%` (`Sharpe 1,66`)**, quase o dobro do *Buy & Hold 1/N* (`+18,14%`).
-> - No **Walk-Forward de 11 anos (2015–2025) com retreino anual**, os modelos não-lineares adaptam-se às rotações estruturais de ciclo econômico, permitindo que **LightGBM (`+884,80%`)**, **Ridge (`+882,76%`)** e **XGBoost (`+802,87%`)** superem com folga tanto a carteira passiva igualitária (`+670,11%`) quanto o ETF `BRAX11` (`+240,74%`).
+2. **Engenharia de Atributos Causal ($\le t$) & Padronização Cross-Sectional (`features.py`):**
+   * **12 Indicadores Técnicos:** Retornos defasados (1d, 5d, 10d, 21d, 63d), volatilidade realizada (21d), distâncias e razão de médias móveis (SMA 20/50), posição nas Bandas de Bollinger, RSI normalizado em $[-1, +1]$ e volume relativo.
+   * **Z-Score Cross-Sectional:** Padronização relativa das ações a cada pregão ($Z = \frac{X - \mu_{dia}}{\sigma_{dia}}$), com corte rígido (*winsorize*) em $[-4, +4]$ para neutralizar o viés direcional diário da bolsa e isolar o *alpha* relativo.
 
----
+3. **Divisão Temporal 70/20/10 com Purga / Embargo de 21 Dias (`splits.py`):**
+   * Como o objetivo preditivo é o excesso de retorno nos **próximos 21 pregões úteis** ($t \to t+21$), uma divisão cronológica simples sofreria vazamento temporal nas fronteiras.
+   * Aplicamos uma **purga matemática de 21 dias** no final do Treino e no final da Validação, garantindo isolamento total entre os conjuntos:
+     * **Treino (70%):** Abr/2015 a Ago/2022 (13.265 amostras)
+     * **Validação (20%):** Set/2022 a Out/2024 (4.063 amostras — seleção de hiperparâmetros)
+     * **Teste Puro (10%):** Nov/2024 a Nov/2025 (2.171 amostras — avaliação estritamente *out-of-sample*)
 
-## Visualizações Geradas pelo Pipeline
-
-### 1. Curva de Patrimônio Acumulado em *Walk-Forward* (2015–2025)
-![Walk-Forward Equity Curve](outputs/figures/02_walkforward_equity.png)
-
-### 2. *Drawdown* (Queda Percentual desde o Pico Histórico — 2015–2025)
-![Walk-Forward Drawdown Curve](outputs/figures/03_walkforward_drawdown.png)
-
-### 3. Confronto Direto: Teste Puro *Out-of-Sample* (10%) vs. *Walk-Forward* (11 Anos)
-![Out-of-Sample vs Walk-Forward Profit](outputs/figures/04_oos_vs_walkforward_profit.png)
-
-### 4. Importância *Cross-Sectional* dos Atributos (XGBoost, LightGBM e Ridge)
-![Feature Importance](outputs/figures/01_feature_importance.png)
+4. **Comparação de Arquiteturas de ML (`models.py`):**
+   * **Regressão Linear Ridge ($L_2$ Baseline):** Solução matricial fechada $(X^T X + \lambda I)^{-1} X^T y$ com seleção ótima do coeficiente de penalidade ($\lambda$).
+   * **XGBoost:** *Gradient Boosted Trees* com divisão simétrica por nível (*depth-wise*).
+   * **LightGBM:** *Gradient Boosted Trees* com divisão ótima por folha (*leaf-wise*).
 
 ---
 
-## Engenharia de Atributos (*Features* Técnicas e Estatísticas)
+## 📊 Resultados e Avaliação dos Modelos
 
-Cada par $(\text{data } t, \text{ação } i)$ é descrito por **12 indicadores** calculados com janela estritamente causal ($\le t$) e padronizados via *Z-score* entre as ações ativas no dia $t$:
+### 1. Métricas de Machine Learning (Treino 70% / Validação 20% / Teste Puro 10%)
 
-| Atributo | Categoria | Definição Matemática (em $t$) |
-| :--- | :--- | :--- |
-| `ret_1d`, `ret_5d`, `ret_10d`, `ret_21d`, `ret_63d` | Momentum / Reversão | Retornos acumulados em 1, 5, 10, 21 e 63 pregões: $P_t / P_{t-k} - 1$ |
-| `vol_21d` | Risco / Volatilidade | Desvio-padrão amostral dos retornos diários nos últimos 21 pregões |
-| `sma20_dist`, `sma50_dist` | Tendência | Distância relativa do fechamento para as médias móveis de 20 e 50 dias |
-| `sma_ratio` | Cruzamento de Médias | Razão entre a média curta e longa: $\text{SMA}_{20}(t) / \text{SMA}_{50}(t) - 1$ |
-| `rsi_14` | Oscilador | Índice de Força Relativa de 14 pregões reescalado para $[-1, +1]$ |
-| `bb_pos` | Bandas de Bollinger | Posição normalizada do preço: $(P_t - \text{SMA}_{20}) / (2 \cdot \sigma_{20})$ |
-| `vol_ratio` | Fluxo / Liquidez | Volume médio de 5 dias dividido pelo volume médio de 21 dias ($\text{clip } [-2, +5]$) |
+| Modelo | Partição | Amostras | RMSE | MAE | $R^2$ OOS (%) | IC Pearson | Rank IC (Spearman) | Acurácia Direcional (%) | AUC-ROC | F1-Score |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **RIDGE** | 1. Treino (70%) | 13.265 | 0,0989 | 0,0693 | +1,09% | +0,1045 | +0,0582 | 52,83% | 0,5316 | 0,4657 |
+| **RIDGE** | 2. Validação (20%) | 4.063 | 0,0799 | 0,0582 | -2,98% | -0,0574 | -0,0470 | 48,14% | 0,4820 | 0,4410 |
+| **RIDGE** | **3. Teste Puro (10%)** | 2.171 | **0,0883** | **0,0634** | **-2,10%** | **-0,0348** | **-0,0175** | **47,95%** | **0,4861** | **0,4350** |
+| **XGBOOST** | 1. Treino (70%) | 13.265 | 0,0980 | 0,0688 | +2,95% | +0,1908 | +0,1047 | 54,55% | 0,5547 | 0,4545 |
+| **XGBOOST** | 2. Validação (20%) | 4.063 | 0,0798 | 0,0580 | -2,60% | -0,0138 | -0,0182 | 50,14% | 0,4973 | 0,4185 |
+| **XGBOOST** | **3. Teste Puro (10%)** | 2.171 | **0,0886** | **0,0638** | **-2,77%** | **-0,0389** | **-0,0220** | **46,71%** | **0,4866** | **0,3783** |
+| **LIGHTGBM**| 1. Treino (70%) | 13.265 | 0,0955 | 0,0674 | +7,71% | +0,3412 | +0,2166 | 57,69% | 0,6028 | 0,4901 |
+| **LIGHTGBM**| 2. Validação (20%) | 4.063 | 0,0800 | 0,0582 | -3,28% | +0,0004 | -0,0099 | 49,94% | 0,4985 | 0,4162 |
+| **LIGHTGBM**| **3. Teste Puro (10%)** | 2.171 | **0,0890** | **0,0639** | **-3,87%** | **-0,0267** | **-0,0052** | **48,13%** | **0,5003** | **0,3953** |
+
+> **Diagnóstico Científico do Trade-off Viés-Variância:**
+> - O **LightGBM** exibiu alta capacidade de memorização no treino ($R^2 = +7,71\%$ e Rank IC $= 0,2166$), mas sofreu perda expressiva de generalização no conjunto de teste estático devido à natureza de baixa razão sinal-ruído das séries financeiras.
+> - A **Regressão Ridge**, com forte restrição estrutural de complexidade ($L_2$, $\lambda = 10$), evitou sobreajuste a ruídos pontuais e apresentou a menor degradação de erro ($RMSE = 0,0883$).
 
 ---
 
-## Estrutura do Repositório
+## 📈 Visualizações Geradas pelo Pipeline
+
+### 1. Importância dos Atributos em Percentual de Ganho (Gain %) e Coeficientes
+![Importância das Features](outputs/figures/01_feature_importance.png)
+
+### 2. Comparativo de Métricas no Teste Puro Out-of-Sample (10%)
+![Resumo de Métricas de Teste](outputs/figures/02_test_metrics_summary.png)
+
+### 3. Retorno Acumulado Composto do Top 10 Selecionado vs. Buy & Hold
+![Retorno Top 10 vs Universo](outputs/figures/03_top10_cumulative_alpha.png)
+
+---
+
+## 🏗️ Estrutura do Repositório
 
 ```text
 quant-ml-b3-portfolio/
-├── README.md                              # Documentação executiva, metodologia e resultados
-├── pyproject.toml                         # Configuração de pacote Python moderno e pytest
+├── README.md                              # Documentação executiva e fundamentação teórica
+├── pyproject.toml                         # Empacotamento moderno (PEP 621) e configuração do pytest
 ├── requirements.txt                       # Dependências reproduzíveis
 ├── data/
-│   └── processed/                         # Base histórica higienizada do IBrX 50 (41 ações) e BRAX11
+│   └── processed/                         # Cotações históricas da B3 tratadas (41 ações do IBrX 50)
 ├── src/
 │   └── quant_ml_b3/
-│       ├── data_loader.py                 # Leitura local + atualização opcional via Yahoo Finance (yfinance)
-│       ├── features.py                    # Engenharia das 12 features sem look-ahead bias + Z-score cross-sectional
-│       ├── splits.py                      # Divisão cronológica 70/20/10 com purga (embargo de 21 pregões)
-│       ├── metrics.py                     # Métricas de ML (IC, Rank IC, AUC, Spread Top 10) e finanças (Sharpe, Calmar)
-│       ├── models.py                      # Treinamento e seleção de hiperparâmetros (Ridge, XGBoost, LightGBM)
-│       ├── backtest.py                    # Motor event-driven (execução no open de t+1, custos de 15 bps, histerese)
-│       └── plotting.py                    # Geração automatizada das figuras de alta resolução
+│       ├── data_loader.py                 # Leitura local e coletor do Yahoo Finance com filtro de liquidez
+│       ├── features.py                    # 12 indicadores causais e Z-score cross-sectional
+│       ├── splits.py                      # Divisão cronológica 70/20/10 com purga temporal (21 dias)
+│       ├── models.py                      # Treinamento e tuning de Ridge, XGBoost e LightGBM
+│       ├── metrics.py                     # Métricas de regressão, ranking (IC) e seleção Top-K
+│       └── plotting.py                    # Gráficos em alta resolução
 ├── scripts/
-│   ├── run_experiment.py                  # Executa o experimento completo e salva tabelas e gráficos
-│   └── fetch_yfinance.py                  # Utilitário opcional para atualizar cotações direto da API do Yahoo Finance
+│   ├── run_experiment.py                  # CLI principal para executar todo o pipeline de ML
+│   └── fetch_yfinance.py                  # Utilitário opcional para download direto da API
 ├── notebooks/
-│   └── 01_ml_quant_strategies_b3.ipynb    # Notebook executivo pré-renderizado para inspeção rápida no GitHub
+│   └── 01_ml_quant_strategies_b3.ipynb    # Jupyter Notebook demonstrativo pré-executado
 ├── outputs/
-│   ├── figures/                           # Gráficos PNG gerados pelo experimento
-│   └── tables/                            # Tabelas CSV com métricas de ML e resultados de backtest
-└── tests/                                 # Suíte de testes automatizados (pytest) validando invariantes causais e financeiros
+│   ├── figures/                           # Gráficos exportados em PNG
+│   └── tables/                            # Tabelas exportadas em CSV
+└── tests/                                 # Suíte de testes unitários automatizados (pytest)
 ```
 
 ---
 
-## Como Executar Localmente
+## 🚀 Como Reproduzir Localmente
 
-### 1. Clonar e instalar dependências
+### 1. Clonar e Instalar Dependências
 ```bash
 git clone https://github.com/SEU-USUARIO/quant-ml-b3-portfolio.git
 cd quant-ml-b3-portfolio
 pip install -r requirements.txt
 ```
 
-### 2. Rodar a suíte de testes automatizados (`pytest`)
-Verifica ausência de *look-ahead bias*, purga temporal, padronização *cross-sectional* e invariantes de caixa do simulador:
+### 2. Rodar a Suíte de Testes Automatizados (`pytest`)
+Valida a ausência de *look-ahead bias*, a normalização *cross-sectional* e a purga temporal:
 ```bash
 pytest -v
 ```
 
-### 3. Reproduzir o experimento completo (Ciência de Dados + Backtest + Gráficos)
+### 3. Executar o Experimento Completo de Machine Learning
 ```bash
 python scripts/run_experiment.py
 ```
 
-### 4. (Opcional) Atualizar cotações da B3 via Yahoo Finance (`yfinance`)
-```bash
-python scripts/fetch_yfinance.py --start 2012-01-01 --end 2026-01-01
-```
-
 ---
 
-## Autor
+## 👤 Autor
 
 **Pedro Magalhães**  
-Ciência da Computação · Machine Learning & Finanças Quantitativas
+Ciência da Computação · Ciência de Dados & Machine Learning

@@ -1,5 +1,9 @@
 """
-Quantitative Machine Learning and Financial Portfolio Performance Metrics.
+Quantitative Machine Learning and Portfolio Selection Evaluation Metrics:
+  - Regression: RMSE, MAE, Out-of-Sample R^2 (%)
+  - Cross-Sectional Ranking: Pearson IC, Spearman Rank IC, Top-K Spread (bps), Top-K Win Periods (%)
+  - Directional Classification (Excess Return > 0): Directional Accuracy (%), Exact ROC-AUC, F1-Score
+  - Factor Portfolio Performance: Cumulative return of model Top-K selection vs. Equal-Weighted Universe (Buy & Hold baseline)
 """
 
 from __future__ import annotations
@@ -31,7 +35,7 @@ def compute_ml_metrics(df_part: pd.DataFrame, pred_vec: np.ndarray, top_k: int =
     ss_tot = float(np.nansum((y_true - np.nanmean(y_true)) ** 2))
     r2_oos = (1.0 - ss_res / ss_tot) if ss_tot > 0 else np.nan
 
-    # 2. Cross-Sectional Ranking / Portfolio Selection (IC & Rank IC)
+    # 2. Cross-Sectional Ranking (IC & Rank IC)
     if np.nanstd(preds) < 1e-12 or np.nanstd(y_true) < 1e-12:
         ic_pearson = 0.0
         ic_spearman = 0.0
@@ -39,14 +43,13 @@ def compute_ml_metrics(df_part: pd.DataFrame, pred_vec: np.ndarray, top_k: int =
         ic_pearson = float(pearsonr(preds, y_true).statistic)
         ic_spearman = float(spearmanr(preds, y_true).statistic)
 
-    # Mean Top-K excess spread per rebalance date
+    # Top-K spread per rebalance date: Top-K average return vs. Universe average return
     df_eval = pd.DataFrame({"date": df_part["date"].to_numpy(), "pred": preds, "raw": y_raw})
     spreads: list[float] = []
     for _, grp in df_eval.groupby("date", sort=False):
         p_d = grp["pred"].to_numpy()
         r_d = grp["raw"].to_numpy()
         k = min(top_k, len(p_d))
-        # Sort descending (stable tie-breaking)
         top_idx = np.argsort(-p_d, kind="mergesort")[:k]
         top_ret = float(np.nanmean(r_d[top_idx]))
         spreads.append(top_ret - float(np.nanmean(r_d)))
@@ -93,120 +96,38 @@ def compute_ml_metrics(df_part: pd.DataFrame, pred_vec: np.ndarray, top_k: int =
     }
 
 
-def compute_trade_win_rate(
-    trades: pd.DataFrame | None,
-    from_date: str | pd.Timestamp | None = None,
-    to_date: str | pd.Timestamp | None = None,
-) -> float:
+def evaluate_top_k_cumulative_performance(
+    df_part: pd.DataFrame,
+    pred_vec: np.ndarray,
+    top_k: int = 10,
+) -> pd.DataFrame:
     """
-    Compute realized trade Win Rate: proportion of sell executions with positive net profit
-    after accounting for average cost basis (including purchase transaction costs) and sell transaction costs.
+    Evaluate the cumulative compound return of selecting the model's Top-K stocks
+    at each rebalancing date versus the Equal-Weighted Universe (Buy & Hold baseline).
+
+    Returns a DataFrame with columns:
+      ['date', 'top_k_return', 'universe_return', 'top_k_cumulative', 'universe_cumulative', 'alpha_cumulative']
     """
-    if trades is None or trades.empty:
-        return np.nan
+    df_eval = pd.DataFrame(
+        {
+            "date": df_part["date"].to_numpy(),
+            "pred": np.asarray(pred_vec, dtype=float),
+            "raw": df_part["target_raw"].to_numpy(dtype=float),
+        }
+    )
 
-    df = trades.copy()
-    df["date"] = pd.to_datetime(df["date"])
-    if to_date is not None:
-        df = df[df["date"] <= pd.Timestamp(to_date)]
-    if df.empty:
-        return np.nan
+    records: list[dict] = []
+    for dt, grp in df_eval.groupby("date", sort=True):
+        p_d = grp["pred"].to_numpy()
+        r_d = grp["raw"].to_numpy()
+        k = min(top_k, len(p_d))
+        top_idx = np.argsort(-p_d, kind="mergesort")[:k]
+        top_ret = float(np.nanmean(r_d[top_idx]))
+        uni_ret = float(np.nanmean(r_d))
+        records.append({"date": dt, "top_k_return": top_ret, "universe_return": uni_ret})
 
-    from_ts = pd.Timestamp(from_date) if from_date is not None else None
-    pos: dict[str, float] = {}
-    avg_cost: dict[str, float] = {}
-    wins = 0
-    total = 0
-
-    for row in df.itertuples(index=False):
-        tk = str(row.ticker)
-        side = str(row.side)
-        qty = float(row.qty)
-        val = float(row.value)
-        cost = float(row.cost)
-        dt = pd.Timestamp(row.date)
-
-        if not tk or qty <= 0 or not np.isfinite(val) or not np.isfinite(cost):
-            continue
-
-        if side == "buy":
-            held = pos.get(tk, 0.0)
-            base = avg_cost.get(tk, 0.0) * held if held > 0 else 0.0
-            new_pos = held + qty
-            pos[tk] = new_pos
-            avg_cost[tk] = (base + val + cost) / new_pos
-        elif side == "sell":
-            held = pos.get(tk, 0.0)
-            if held <= 0:
-                continue
-            q = min(qty, held)
-            net_proceeds = (val - cost) * (q / qty)
-            realized_pnl = net_proceeds - avg_cost.get(tk, 0.0) * q
-            if from_ts is None or dt >= from_ts:
-                total += 1
-                if realized_pnl > 0:
-                    wins += 1
-            rem = held - q
-            if rem <= 1e-12:
-                pos[tk] = 0.0
-                avg_cost[tk] = 0.0
-            else:
-                pos[tk] = rem
-
-    return (wins / total) if total > 0 else np.nan
-
-
-def compute_financial_metrics(
-    equity_df: pd.DataFrame,
-    trades_df: pd.DataFrame | None = None,
-    initial_capital: float = 100_000.0,
-    rf: float = 0.0,
-) -> dict[str, float]:
-    """
-    Compute portfolio performance metrics from a daily equity curve (`['date', 'equity']`) and trade ledger.
-    """
-    curve = equity_df.dropna(subset=["equity"]).sort_values("date").reset_index(drop=True)
-    if len(curve) < 2:
-        raise ValueError("At least 2 daily equity observations are required to compute financial metrics.")
-
-    values = curve["equity"].to_numpy(dtype=float)
-    returns = values[1:] / values[:-1] - 1.0
-    n = len(returns)
-
-    total_return = float(values[-1] / values[0] - 1.0)
-    annual_return = float((1.0 + total_return) ** (252.0 / n) - 1.0)
-    annual_vol = float(np.std(returns, ddof=1) * np.sqrt(252.0))
-    sharpe = float((annual_return - rf) / annual_vol) if annual_vol > 0 else np.nan
-
-    running_max = np.maximum.accumulate(values)
-    drawdowns = values / running_max - 1.0
-    max_drawdown = float(np.min(drawdowns))
-    calmar = float(annual_return / abs(max_drawdown)) if max_drawdown < 0 else np.nan
-
-    start_dt = curve["date"].iloc[0]
-    end_dt = curve["date"].iloc[-1]
-    win_rate = compute_trade_win_rate(trades_df, from_date=start_dt, to_date=end_dt)
-
-    turnover = np.nan
-    total_cost = np.nan
-    cost_pct = np.nan
-    if trades_df is not None and not trades_df.empty:
-        t_sub = trades_df[(trades_df["date"] >= start_dt) & (trades_df["date"] <= end_dt)]
-        turnover = float(t_sub["value"].abs().sum() / np.mean(values) * (252.0 / n))
-        total_cost = float(t_sub["cost"].sum())
-        cost_pct = float(total_cost / initial_capital)
-
-    return {
-        "final_equity": round(float(values[-1]), 2),
-        "net_profit_brl": round(float(values[-1] - initial_capital), 2),
-        "total_return": total_return,
-        "annual_return": annual_return,
-        "annual_vol": annual_vol,
-        "sharpe": sharpe,
-        "max_drawdown": max_drawdown,
-        "calmar": calmar,
-        "win_rate": win_rate,
-        "turnover": turnover,
-        "total_cost": total_cost,
-        "cost_pct": cost_pct,
-    }
+    res = pd.DataFrame(records).sort_values("date").reset_index(drop=True)
+    res["top_k_cumulative"] = np.cumprod(1.0 + res["top_k_return"]) - 1.0
+    res["universe_cumulative"] = np.cumprod(1.0 + res["universe_return"]) - 1.0
+    res["alpha_cumulative"] = (1.0 + res["top_k_cumulative"]) / (1.0 + res["universe_cumulative"]) - 1.0
+    return res
