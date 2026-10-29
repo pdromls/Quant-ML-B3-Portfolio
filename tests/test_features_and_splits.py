@@ -8,7 +8,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from quant_ml_b3.data_loader import MarketData
+from quant_ml_b3.data_loader import MarketData, validate_market_data
 from quant_ml_b3.features import (
     FEATURE_COLS,
     build_ml_panel,
@@ -98,3 +98,29 @@ def test_extract_current_features_returns_single_day_cross_section() -> None:
     df_today = extract_current_features(mkt)
     assert len(df_today) == 10
     assert (df_today["date"] == mkt.dates[-1]).all()
+
+
+def test_validate_market_data_detects_valid_and_corrupt_data() -> None:
+    mkt = _make_synthetic_market(n_days=100, n_tickers=10)
+    rep = validate_market_data(mkt)
+    assert rep.is_valid is True
+    assert rep.has_infinite_values is False
+    assert rep.has_negative_prices is False
+    assert rep.is_strictly_chronological is True
+    assert "APROVADO" in rep.summary()
+
+    # Corrupt with negative price
+    corrupt_close = mkt.close.copy()
+    corrupt_close.iloc[10, 0] = -5.0
+    corrupt_mkt = MarketData(
+        dates=mkt.dates,
+        tickers=mkt.tickers,
+        open=mkt.open,
+        close=corrupt_close,
+        volume=mkt.volume,
+    )
+    rep_bad = validate_market_data(corrupt_mkt)
+    assert rep_bad.is_valid is False
+    assert rep_bad.has_negative_prices is True
+    assert "FALHA" in rep_bad.summary()
+

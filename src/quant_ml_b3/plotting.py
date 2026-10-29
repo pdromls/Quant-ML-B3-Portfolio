@@ -8,6 +8,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
+import numpy as np
 import pandas as pd
 
 MODEL_PALETTE = {
@@ -167,6 +168,263 @@ def plot_top_k_cumulative_alpha(
     ax_alp.legend(loc="upper left", frameon=True, facecolor="white", edgecolor="#E5E7EB", fontsize=9.5)
     ax_alp.spines[["top", "right", "left", "bottom"]].set_color("#D1D5DB")
 
+    Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_path, bbox_inches="tight", dpi=160)
+    plt.close(fig)
+
+
+
+def plot_walk_forward_comparison(
+    df_cum: pd.DataFrame,
+    df_summary: pd.DataFrame,
+    out_path: str | Path,
+) -> None:
+    """
+    Generate the 2-panel Walk-Forward visual comparison (2015-2025):
+      - Panel A: Multi-year cumulative equity curves (Walk-Forward Dynamic vs. Frozen vs. Buy & Hold)
+      - Panel B: Bar chart comparing CAGR (% p.a.) between Dynamic Retrained and Static Frozen models
+    """
+    fig, (ax_curve, ax_bars) = plt.subplots(2, 1, figsize=(15, 12), dpi=160, gridspec_kw={"height_ratios": [1.4, 1.0]})
+    fig.patch.set_facecolor("white")
+
+    dates = pd.to_datetime(df_cum["date"])
+
+    # 1. Equity Curves
+    if "Universe" in df_cum.columns:
+        u_ret = df_cum["Universe"].iloc[-1]
+        ax_curve.plot(
+            dates,
+            df_cum["Universe"],
+            label=f"Buy & Hold (Universo 1/N) [{u_ret:+.1f}%]",
+            color="#4B5563",
+            linewidth=2.2,
+            linestyle="--",
+        )
+
+    styles = {
+        "Xgboost_WF": ("#2563EB", "-", 2.2, "XGBoost (Walk-Forward Anual)"),
+        "Ridge_WF": ("#D97706", "-", 2.2, "Ridge (Walk-Forward Anual)"),
+        "Lightgbm_WF": ("#059669", "-", 2.0, "LightGBM (Walk-Forward Anual)"),
+        "Xgboost_Frozen": ("#93C5FD", ":", 1.6, "XGBoost (Congelado)"),
+        "Ridge_Frozen": ("#FCD34D", ":", 1.6, "Ridge (Congelado)"),
+        "Lightgbm_Frozen": ("#6EE7B7", ":", 1.6, "LightGBM (Congelado)"),
+    }
+
+    for col, (color, lstyle, lwidth, label_prefix) in styles.items():
+        if col in df_cum.columns:
+            final_val = df_cum[col].iloc[-1]
+            lbl = f"{label_prefix} [{final_val:+.1f}%]"
+            ax_curve.plot(dates, df_cum[col], label=lbl, color=color, linestyle=lstyle, linewidth=lwidth)
+
+    ax_curve.set_title(
+        "A) Curva de Patrimônio Acumulado (2015-2025): Walk-Forward Anual vs. Modelos Congelados vs. Buy & Hold",
+        fontsize=12,
+        fontweight="bold",
+        loc="left",
+        pad=10,
+    )
+    ax_curve.set_ylabel("Retorno Acumulado Composto (%)", fontsize=10.5)
+    ax_curve.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f"{x:+.0f}%"))
+    ax_curve.grid(True, linestyle="-", color="#E5E7EB", linewidth=0.8)
+    ax_curve.legend(loc="upper left", frameon=True, facecolor="white", edgecolor="#E5E7EB", fontsize=9.2, ncol=2)
+    ax_curve.spines[["top", "right", "left", "bottom"]].set_color("#D1D5DB")
+
+    # 2. Bar Panel: Retraining Benefit (CAGR % and Total Gain)
+    df_models = df_summary[df_summary["Estrategia"].str.contains("ML:")].copy()
+    model_types = ["RIDGE", "XGBOOST", "LIGHTGBM"]
+    x = np.arange(len(model_types))
+    width = 0.32
+
+    wf_cagrs = []
+    frz_cagrs = []
+    gains = []
+
+    for m in model_types:
+        row_wf = df_models[df_models["Estrategia"].str.upper().str.contains(m) & df_models["Estrategia"].str.contains("Walk-Forward")]
+        row_frz = df_models[df_models["Estrategia"].str.upper().str.contains(m) & df_models["Estrategia"].str.contains("Congelado")]
+        c_wf = float(row_wf["CAGR_pct"].iloc[0]) if len(row_wf) else 0.0
+        c_frz = float(row_frz["CAGR_pct"].iloc[0]) if len(row_frz) else 0.0
+        wf_cagrs.append(c_wf)
+        frz_cagrs.append(c_frz)
+        gains.append(c_wf - c_frz)
+
+    rects1 = ax_bars.bar(x - width / 2, wf_cagrs, width, label="Walk-Forward (Retreino Anual)", color="#1E40AF")
+    rects2 = ax_bars.bar(x + width / 2, frz_cagrs, width, label="Congelado (Sem Retreino)", color="#94A3B8")
+
+    for i in range(len(model_types)):
+        gain_val = gains[i]
+        c_wf = wf_cagrs[i]
+        c_frz = frz_cagrs[i]
+        ax_bars.annotate(
+            f"{c_wf:.1f}%",
+            (x[i] - width / 2, c_wf),
+            ha="center",
+            va="bottom",
+            fontsize=9.5,
+            fontweight="bold",
+            xytext=(0, 2),
+            textcoords="offset points",
+        )
+        ax_bars.annotate(
+            f"{c_frz:.1f}%",
+            (x[i] + width / 2, c_frz),
+            ha="center",
+            va="bottom",
+            fontsize=9.5,
+            xytext=(0, 2),
+            textcoords="offset points",
+        )
+        sign = "+" if gain_val >= 0 else ""
+        ax_bars.annotate(
+            f"Ganho do Retreino: {sign}{gain_val:.1f}% a.a.",
+            (x[i], max(c_wf, c_frz) * 0.5),
+            ha="center",
+            va="center",
+            fontsize=9.0,
+            fontweight="bold",
+            color="#047857" if gain_val >= 0 else "#DC2626",
+            bbox=dict(boxstyle="round,pad=0.25", fc="#F0FDF4" if gain_val >= 0 else "#FEF2F2", ec="#86EFAC" if gain_val >= 0 else "#FECACA", lw=0.8),
+        )
+
+    ax_bars.set_title(
+        "B) Rentabilidade Anualizada (CAGR % a.a.): Impacto Empírico do Retreino Walk-Forward",
+        fontsize=12,
+        fontweight="bold",
+        loc="left",
+        pad=10,
+    )
+    ax_bars.set_ylabel("CAGR (% a.a.)", fontsize=10.5)
+    ax_bars.set_xticks(x)
+    ax_bars.set_xticklabels(["Regressão Ridge", "XGBoost", "LightGBM"], fontsize=11, fontweight="bold")
+    ax_bars.yaxis.set_major_formatter(mticker.FuncFormatter(lambda y, _: f"{y:.0f}%"))
+    ax_bars.grid(axis="y", linestyle="-", color="#E5E7EB", linewidth=0.8)
+    ax_bars.legend(loc="upper right", frameon=True, facecolor="white", edgecolor="#E5E7EB", fontsize=9.5)
+    ax_bars.spines[["top", "right", "left", "bottom"]].set_color("#D1D5DB")
+
+    Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_path, bbox_inches="tight", dpi=160)
+    plt.close(fig)
+
+
+def plot_weighting_schemes_comparison(
+    df_cum: pd.DataFrame,
+    df_summary: pd.DataFrame,
+    out_path: str | Path,
+) -> None:
+    """
+    Generate a 2-panel figure comparing Hard Cut 1/N (Top 10) vs Soft Weighting (Top 15 Rank Linear):
+      - Panel A: Cumulative compound equity curves (2015-2025).
+      - Panel B: Grouped bars comparing Annualized Return (CAGR %) and Sharpe Ratio.
+    """
+    fig, (ax_curve, ax_bars) = plt.subplots(2, 1, figsize=(15, 12), dpi=160, gridspec_kw={"height_ratios": [1.4, 1.0]})
+    fig.patch.set_facecolor("white")
+
+    dates = pd.to_datetime(df_cum["date"])
+
+    # 1. Curve Panel
+    if "Universe" in df_cum.columns:
+        u_ret = df_cum["Universe"].iloc[-1]
+        ax_curve.plot(
+            dates,
+            df_cum["Universe"],
+            label=f"Buy & Hold (Universo 1/N) [{u_ret:+.1f}%]",
+            color="#4B5563",
+            linewidth=2.2,
+            linestyle="--",
+        )
+
+    curve_styles = {
+        "Ridge_HardCut": ("#D97706", "-", 2.2, "Ridge: Hard Cut Top 10"),
+        "Ridge_SoftWeight": ("#F59E0B", "--", 2.0, "Ridge: Soft Weight Top 15"),
+        "Xgboost_HardCut": ("#2563EB", "-", 2.2, "XGBoost: Hard Cut Top 10"),
+        "Xgboost_SoftWeight": ("#60A5FA", "--", 2.0, "XGBoost: Soft Weight Top 15"),
+        "Lightgbm_HardCut": ("#059669", "-", 2.2, "LightGBM: Hard Cut Top 10"),
+        "Lightgbm_SoftWeight": ("#34D399", "--", 2.0, "LightGBM: Soft Weight Top 15"),
+    }
+
+    for col, (color, lstyle, lwidth, label_prefix) in curve_styles.items():
+        if col in df_cum.columns:
+            final_val = df_cum[col].iloc[-1]
+            lbl = f"{label_prefix} [{final_val:+.1f}%]"
+            ax_curve.plot(dates, df_cum[col], label=lbl, color=color, linestyle=lstyle, linewidth=lwidth)
+
+    ax_curve.set_title(
+        "A) Curva de Patrimônio Acumulado (2015-2025): Hard Cut (Top 10 1/N) vs. Soft Weighting (Top 15 Rank Linear)",
+        fontsize=12,
+        fontweight="bold",
+        loc="left",
+        pad=10,
+    )
+    ax_curve.set_ylabel("Retorno Acumulado Composto (%)", fontsize=10.5)
+    ax_curve.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f"{x:+.0f}%"))
+    ax_curve.grid(True, linestyle="-", color="#E5E7EB", linewidth=0.8)
+    ax_curve.legend(loc="upper left", frameon=True, facecolor="white", edgecolor="#E5E7EB", fontsize=9.2, ncol=2)
+    ax_curve.spines[["top", "right", "left", "bottom"]].set_color("#D1D5DB")
+
+    # 2. Bar Panel: CAGR & Sharpe Comparison
+    df_models = df_summary[df_summary["Modelo"].str.contains("ML:")].copy()
+    models = ["RIDGE", "XGBOOST", "LIGHTGBM"]
+    x = np.arange(len(models))
+    width = 0.35
+
+    cagr_hard, cagr_soft = [], []
+    sharpe_hard, sharpe_soft = [], []
+
+    for m in models:
+        r_hd = df_models[df_models["Modelo"].str.upper().str.contains(m) & df_models["Esquema"].str.contains("Hard Cut")]
+        r_sf = df_models[df_models["Modelo"].str.upper().str.contains(m) & df_models["Esquema"].str.contains("Soft Weighting")]
+
+        c_hd = float(r_hd["CAGR_pct"].iloc[0]) if len(r_hd) else 0.0
+        c_sf = float(r_sf["CAGR_pct"].iloc[0]) if len(r_sf) else 0.0
+        s_hd = float(r_hd["Sharpe_Ratio"].iloc[0]) if len(r_hd) else 0.0
+        s_sf = float(r_sf["Sharpe_Ratio"].iloc[0]) if len(r_sf) else 0.0
+
+        cagr_hard.append(c_hd)
+        cagr_soft.append(c_sf)
+        sharpe_hard.append(s_hd)
+        sharpe_soft.append(s_sf)
+
+    bars1 = ax_bars.bar(x - width / 2, cagr_hard, width, label="Hard Cut (Top 10 1/N com Histerese)", color="#1E40AF")
+    bars2 = ax_bars.bar(x + width / 2, cagr_soft, width, label="Soft Weighting (Top 15 Rank Linear)", color="#059669")
+
+    for i in range(len(models)):
+        ax_bars.annotate(
+            f"{cagr_hard[i]:.1f}% a.a.\n(Sharpe {sharpe_hard[i]:.2f})",
+            (x[i] - width / 2, cagr_hard[i]),
+            ha="center",
+            va="bottom",
+            fontsize=9.2,
+            fontweight="bold",
+            xytext=(0, 2),
+            textcoords="offset points",
+        )
+        ax_bars.annotate(
+            f"{cagr_soft[i]:.1f}% a.a.\n(Sharpe {sharpe_soft[i]:.2f})",
+            (x[i] + width / 2, cagr_soft[i]),
+            ha="center",
+            va="bottom",
+            fontsize=9.2,
+            fontweight="bold",
+            xytext=(0, 2),
+            textcoords="offset points",
+        )
+
+    ax_bars.set_title(
+        "B) Desempenho Anualizado (CAGR % a.a. e Sharpe): Comparação entre Políticas de Construção de Portfólio",
+        fontsize=12,
+        fontweight="bold",
+        loc="left",
+        pad=10,
+    )
+    ax_bars.set_ylabel("CAGR (% a.a.)", fontsize=10.5)
+    ax_bars.set_xticks(x)
+    ax_bars.set_xticklabels(["Regressão Ridge", "XGBoost", "LightGBM"], fontsize=11, fontweight="bold")
+    ax_bars.yaxis.set_major_formatter(mticker.FuncFormatter(lambda y, _: f"{y:.0f}%"))
+    ax_bars.grid(axis="y", linestyle="-", color="#E5E7EB", linewidth=0.8)
+    ax_bars.legend(loc="upper right", frameon=True, facecolor="white", edgecolor="#E5E7EB", fontsize=9.5)
+    ax_bars.spines[["top", "right", "left", "bottom"]].set_color("#D1D5DB")
+
+    plt.tight_layout()
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, bbox_inches="tight", dpi=160)
     plt.close(fig)

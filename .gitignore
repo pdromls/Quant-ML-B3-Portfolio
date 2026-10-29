@@ -24,3 +24,7 @@ htmlcov/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Arquivos de documentação interna e receitas auxiliares (não versionar no GitHub)
+DOCUMENTACAO_COMPLETA.md
+RECEITA_POWER_BI.md

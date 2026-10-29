@@ -1,0 +1,8 @@
+Estrategia,Modo,Retorno_Acumulado_pct,CAGR_pct,Volatilidade_Anualizada_pct,Sharpe_Ratio,Max_Drawdown_pct,Alpha_vs_Universo_pct,Ganho_Retreino_pct
+Buy & Hold (Universo 1/N),Benchmark Passivo,615.0,19.74,24.26,0.81,-37.16,0.0,0.0
+ML: RIDGE (Walk-Forward),Retreino a cada 12m,1415.5,28.28,27.93,1.01,-39.34,8.54,8.91
+ML: RIDGE (Congelado),Estatico (Sem Retreino),590.71,19.37,21.87,0.89,-36.71,-0.37,0.0
+ML: XGBOOST (Walk-Forward),Retreino a cada 12m,827.44,22.63,29.17,0.78,-45.89,2.89,3.7
+ML: XGBOOST (Congelado),Estatico (Sem Retreino),563.51,18.93,23.59,0.8,-41.24,-0.81,0.0
+ML: LIGHTGBM (Walk-Forward),Retreino a cada 12m,777.54,22.01,29.27,0.75,-41.76,2.27,-0.63
+ML: LIGHTGBM (Congelado),Estatico (Sem Retreino),828.28,22.64,22.75,1.0,-37.54,2.9,0.0

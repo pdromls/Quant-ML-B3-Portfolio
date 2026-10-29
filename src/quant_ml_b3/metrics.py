@@ -3,7 +3,7 @@ Quantitative Machine Learning and Portfolio Selection Evaluation Metrics:
   - Regression: RMSE, MAE, Out-of-Sample R^2 (%)
   - Cross-Sectional Ranking: Pearson IC, Spearman Rank IC, Top-K Spread (bps), Top-K Win Periods (%)
   - Directional Classification (Excess Return > 0): Directional Accuracy (%), Exact ROC-AUC, F1-Score
-  - Factor Portfolio Performance: Cumulative return of model Top-K selection vs. Equal-Weighted Universe (Buy & Hold baseline)
+  - Factor Portfolio Performance: Realistic monthly non-overlapping selection of Top-K stocks with hysteresis buffer vs. Buy & Hold baseline
 """
 
 from __future__ import annotations
@@ -11,6 +11,9 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 from scipy.stats import pearsonr, rankdata, spearmanr
+
+from .data_loader import MarketData
+from .features import extract_current_features
 
 
 def compute_ml_metrics(df_part: pd.DataFrame, pred_vec: np.ndarray, top_k: int = 10) -> dict[str, float | int]:
@@ -96,35 +99,66 @@ def compute_ml_metrics(df_part: pd.DataFrame, pred_vec: np.ndarray, top_k: int =
     }
 
 
-def evaluate_top_k_cumulative_performance(
-    df_part: pd.DataFrame,
-    pred_vec: np.ndarray,
+def evaluate_monthly_top_k_selection(
+    model: "MLModelArtifact",
+    market_full: MarketData,
+    start_date: str | pd.Timestamp,
+    end_date: str | pd.Timestamp,
     top_k: int = 10,
+    hysteresis_buffer: int = 20,
 ) -> pd.DataFrame:
     """
-    Evaluate the cumulative compound return of selecting the model's Top-K stocks
-    at each rebalancing date versus the Equal-Weighted Universe (Buy & Hold baseline).
-
-    Returns a DataFrame with columns:
-      ['date', 'top_k_return', 'universe_return', 'top_k_cumulative', 'universe_cumulative', 'alpha_cumulative']
+    Evaluate realistic monthly non-overlapping selection of Top-K stocks:
+      - Rebalance on the 1st trading day of each calendar month
+      - Use hysteresis buffer: stocks already held that remain in the Top 20 are kept
+      - Calculate exact monthly price returns without overlapping compounding
     """
-    df_eval = pd.DataFrame(
-        {
-            "date": df_part["date"].to_numpy(),
-            "pred": np.asarray(pred_vec, dtype=float),
-            "raw": df_part["target_raw"].to_numpy(dtype=float),
-        }
-    )
+    from .models import predict_ml_model
+    start_ts = pd.Timestamp(start_date)
+    end_ts = pd.Timestamp(end_date)
+    test_mkt = market_full.slice_dates(start_ts, end_ts)
 
+    months = test_mkt.dates.to_period("M")
+    rebal_idx = np.where(months != np.roll(months, 1))[0]
+    close_mat = test_mkt.close
+
+    held_tickers: list[str] = []
     records: list[dict] = []
-    for dt, grp in df_eval.groupby("date", sort=True):
-        p_d = grp["pred"].to_numpy()
-        r_d = grp["raw"].to_numpy()
-        k = min(top_k, len(p_d))
-        top_idx = np.argsort(-p_d, kind="mergesort")[:k]
-        top_ret = float(np.nanmean(r_d[top_idx]))
-        uni_ret = float(np.nanmean(r_d))
-        records.append({"date": dt, "top_k_return": top_ret, "universe_return": uni_ret})
+
+    for i in range(len(rebal_idx) - 1):
+        idx_t = int(rebal_idx[i])
+        idx_next = int(rebal_idx[i + 1])
+        dt = test_mkt.dates[idx_t]
+
+        full_idx_t = int(np.where(market_full.dates == dt)[0][0])
+        win = market_full.slice_iloc(np.arange(max(0, full_idx_t - 260), full_idx_t + 1))
+        df_today = extract_current_features(win)
+        if df_today.empty:
+            continue
+
+        preds = predict_ml_model(model, df_today)
+        ranked = list(preds.sort_values(ascending=False).index)
+
+        # Hysteresis buffer
+        buffer_set = set(ranked[: min(hysteresis_buffer, len(ranked))])
+        kept = [tk for tk in held_tickers if tk in buffer_set]
+        new_picks = [tk for tk in ranked if tk not in kept]
+        chosen = kept + new_picks[: top_k - len(kept)]
+        held_tickers = chosen
+
+        p_start = close_mat.iloc[idx_t]
+        p_end = close_mat.iloc[idx_next]
+
+        r_all = (p_end / p_start - 1.0).dropna()
+        r_top = (p_end[chosen] / p_start[chosen] - 1.0).dropna()
+
+        records.append(
+            {
+                "date": test_mkt.dates[idx_next],
+                "top_k_return": float(r_top.mean()),
+                "universe_return": float(r_all.mean()),
+            }
+        )
 
     res = pd.DataFrame(records).sort_values("date").reset_index(drop=True)
     res["top_k_cumulative"] = np.cumprod(1.0 + res["top_k_return"]) - 1.0

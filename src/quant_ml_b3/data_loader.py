@@ -94,7 +94,7 @@ def load_benchmark_series(
 def download_b3_universe_yfinance(
     tickers: Sequence[str],
     start: str = "2012-01-01",
-    end: str = "2026-01-01",
+    end: str | None = None,
     min_active_stocks_per_day: int = 20,
 ) -> MarketData:
     """
@@ -142,3 +142,114 @@ def download_b3_universe_yfinance(
         close=close_df.reset_index(drop=True),
         volume=vol_df.reset_index(drop=True),
     )
+
+
+@dataclass(frozen=True)
+class MarketDataValidationReport:
+    """Diagnostic report verifying the structural integrity and data hygiene of a MarketData instance."""
+
+    is_valid: bool
+    n_dates: int
+    n_tickers: int
+    date_range: tuple[str, str]
+    is_strictly_chronological: bool
+    has_duplicate_dates: bool
+    has_infinite_values: bool
+    has_negative_prices: bool
+    active_coverage_ratio_pct: float
+    issues: list[str]
+
+    def summary(self) -> str:
+        status_str = "APROVADO (OK)" if self.is_valid else "FALHA (PROBLEMAS DETECTADOS)"
+        lines = [
+            "=" * 60,
+            "RELATÓRIO DE INTEGRIDADE E VALIDAÇÃO DE DADOS (DATA QUALITY)",
+            "=" * 60,
+            f"Status de Validação: {status_str}",
+            f"Dimensões: {self.n_tickers} tickers x {self.n_dates} pregões ({self.date_range[0]} a {self.date_range[1]})",
+            f"Cronologia Estrita (Monotônica Crescente): {'Sim' if self.is_strictly_chronological else 'Não'}",
+            f"Datas Duplicadas: {'Nenhuma' if not self.has_duplicate_dates else 'Detectadas'}",
+            f"Valores Infinitos (inf / -inf): {'Nenhum' if not self.has_infinite_values else 'Detectados'}",
+            f"Preços Negativos ou Zero: {'Nenhum' if not self.has_negative_prices else 'Detectados'}",
+            f"Taxa Média de Ações Ativas por Pregão: {self.active_coverage_ratio_pct:.2f}%",
+        ]
+        if self.issues:
+            lines.append("-" * 60)
+            lines.append("Problemas identificados:")
+            for issue in self.issues:
+                lines.append(f"  [ALERTA] {issue}")
+        lines.append("=" * 60)
+        return "\n".join(lines)
+
+
+def validate_market_data(market: MarketData) -> MarketDataValidationReport:
+    """
+    Run comprehensive structural and data hygiene checks on a MarketData instance:
+      1. Strict chronological ordering and absence of duplicate dates
+      2. Perfect matrix dimension invariants (open == close == volume == dates)
+      3. Absence of infinite values (inf / -inf)
+      4. Absence of non-positive prices (prices <= 0 where not NaN)
+      5. Active stock coverage across trading days
+    """
+    issues: list[str] = []
+
+    # 1. Date checks
+    is_chrono = bool(market.dates.is_monotonic_increasing)
+    if not is_chrono:
+        issues.append("O vetor de datas não está em ordem cronológica estritamente crescente.")
+
+    has_dup = bool(market.dates.has_duplicates)
+    if has_dup:
+        issues.append(f"Existem datas duplicadas no eixo temporal ({market.dates.duplicated().sum()} ocorrências).")
+
+    # 2. Shape checks
+    if not (market.open.shape == market.close.shape == market.volume.shape):
+        issues.append(f"Incompatibilidade de dimensões: open={market.open.shape}, close={market.close.shape}, volume={market.volume.shape}.")
+
+    if len(market.dates) != market.close.shape[0]:
+        issues.append(f"Comprimento de datas ({len(market.dates)}) diverge do número de linhas ({market.close.shape[0]}).")
+
+    # 3. Infinite value checks
+    open_arr = market.open.to_numpy()
+    close_arr = market.close.to_numpy()
+    vol_arr = market.volume.to_numpy()
+
+    has_inf = bool(
+        np.isinf(open_arr).any()
+        or np.isinf(close_arr).any()
+        or np.isinf(vol_arr).any()
+    )
+    if has_inf:
+        issues.append("Detectados valores infinitos (inf ou -inf) nas matrizes de dados.")
+
+    # 4. Negative prices checks (ignoring NaN)
+    has_neg_price = bool(
+        np.any(open_arr[~np.isnan(open_arr)] <= 0)
+        or np.any(close_arr[~np.isnan(close_arr)] <= 0)
+        or np.any(vol_arr[~np.isnan(vol_arr)] < 0)
+    )
+    if has_neg_price:
+        issues.append("Detectados preços menores ou iguais a zero em dias considerados válidos.")
+
+    # 5. Active coverage
+    active_counts = np.sum(~np.isnan(close_arr) & (close_arr > 0) & (vol_arr > 0), axis=1)
+    avg_active = float(np.mean(active_counts) / len(market.tickers) * 100.0) if len(market.tickers) > 0 else 0.0
+
+    is_valid = len(issues) == 0
+
+    d_start = str(market.dates[0].date()) if len(market.dates) > 0 else "N/A"
+    d_end = str(market.dates[-1].date()) if len(market.dates) > 0 else "N/A"
+
+    return MarketDataValidationReport(
+        is_valid=is_valid,
+        n_dates=len(market.dates),
+        n_tickers=len(market.tickers),
+        date_range=(d_start, d_end),
+        is_strictly_chronological=is_chrono,
+        has_duplicate_dates=has_dup,
+        has_infinite_values=has_inf,
+        has_negative_prices=has_neg_price,
+        active_coverage_ratio_pct=avg_active,
+        issues=issues,
+    )
+

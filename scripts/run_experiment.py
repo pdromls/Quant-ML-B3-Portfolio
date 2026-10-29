@@ -5,12 +5,13 @@ Main CLI entrypoint for the Quantitative Machine Learning Experiment on the B3 I
   3. Chronological 70% Train / 20% Val / 10% Test Split with 21-day Purge (Embargo)
   4. Model Training & Hyperparameter Selection (Ridge L2 Baseline, XGBoost, LightGBM)
   5. Comprehensive ML Evaluation (Regression, Ranking/IC, Directional Classification)
-  6. Top-10 Stock Selection Factor Performance vs. Equal-Weighted Universe (Buy & Hold baseline)
+  6. Monthly Top-10 Selection Factor Performance with Hysteresis vs. Buy & Hold baseline
   7. Feature Importance Analysis (Gain % and Standardized Coefficients)
 """
 
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 import sys
 
@@ -23,21 +24,34 @@ sys.path.insert(0, str(ROOT_DIR / "src"))
 from quant_ml_b3 import (
     FEATURE_COLS,
     build_ml_panel,
-    evaluate_top_k_cumulative_performance,
+    download_b3_universe_yfinance,
+    evaluate_monthly_top_k_selection,
     extract_feature_importance,
     fit_ml_model,
     load_local_market_data,
-    predict_ml_model,
+    run_walk_forward_simulation,
+    run_weighting_schemes_comparison,
     split_temporal_70_20_10,
 )
 from quant_ml_b3.plotting import (
     plot_feature_importance,
     plot_test_metrics_summary,
     plot_top_k_cumulative_alpha,
+    plot_walk_forward_comparison,
+    plot_weighting_schemes_comparison,
 )
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Pipeline Quantitativo de Machine Learning e Walk-Forward na B3.")
+    parser.add_argument(
+        "--source",
+        choices=["local", "yfinance"],
+        default="local",
+        help="Fonte dos dados: 'local' (CSVs pré-processados) ou 'yfinance' (API ao vivo do Yahoo Finance).",
+    )
+    args = parser.parse_args()
+
     data_dir = ROOT_DIR / "data" / "processed"
     tables_dir = ROOT_DIR / "outputs" / "tables"
     figures_dir = ROOT_DIR / "outputs" / "figures"
@@ -47,7 +61,14 @@ def main() -> None:
     print("=" * 78)
     print("1. CARREGAMENTO DO UNIVERSO B3 (IBrX 50 - 41 ACOES DE ALTA LIQUIDEZ)")
     print("=" * 78)
-    market_full = load_local_market_data(data_dir)
+    if args.source == "yfinance":
+        print("Coletando cotações atualizadas diretamente da API do Yahoo Finance (yfinance)...")
+        local_ref = load_local_market_data(data_dir)
+        market_full = download_b3_universe_yfinance(local_ref.tickers, start="2012-01-01", end="2026-01-01")
+    else:
+        print("Carregando cotações locais pré-processadas...")
+        market_full = load_local_market_data(data_dir)
+
     print(
         f"Universo carregado: {len(market_full.tickers)} acoes x {len(market_full.dates)} pregoes "
         f"({market_full.dates[0].date()} a {market_full.dates[-1].date()})\n"
@@ -116,19 +137,24 @@ def main() -> None:
     imp_df.to_csv(tables_dir / "feature_importance.csv", index=False)
     plot_feature_importance(imp_df, figures_dir / "01_feature_importance.png")
 
-    # 6. Avaliacao Quantitativa de Selecao Top 10 vs. Buy & Hold (Universo Igualitario)
+    # 6. Avaliacao Quantitativa Mensal Realista: Top 10 vs. Buy & Hold
     print("\n" + "=" * 78)
-    print("6. AVALIACAO DE SELECAO TOP 10 vs. BUY & HOLD (PARTICAO DE TESTE PURO 10%)")
+    print("6. AVALIACAO MENSAL: SELECAO TOP 10 COM HISTERESE vs. BUY & HOLD (TESTE PURO)")
     print("=" * 78)
 
-    # Predicoes de cada modelo no conjunto de teste puro
-    preds_ridge_test = predict_ml_model(fit_ridge, splits.test).to_numpy()
-    preds_xgb_test = predict_ml_model(fit_xgb, splits.test).to_numpy()
-    preds_lgb_test = predict_ml_model(fit_lgb, splits.test).to_numpy()
+    # Calibrar modelos no historico recente de 3 anos (756 dias) imediatamente anterior ao teste
+    t_start = int(np.where(market_full.dates == te_p[0])[0][0])
+    hist_mkt = market_full.slice_iloc(np.arange(t_start - 756, t_start))
+    panel_hist = build_ml_panel(hist_mkt, horizon=21, step=5)
+    splits_hist = split_temporal_70_20_10(panel_hist, train_ratio=0.70, val_ratio=0.20, purge_days=21)
 
-    perf_ridge = evaluate_top_k_cumulative_performance(splits.test, preds_ridge_test, top_k=10)
-    perf_xgb = evaluate_top_k_cumulative_performance(splits.test, preds_xgb_test, top_k=10)
-    perf_lgb = evaluate_top_k_cumulative_performance(splits.test, preds_lgb_test, top_k=10)
+    eval_ridge = fit_ml_model("ridge", splits_hist, FEATURE_COLS, seed=42)
+    eval_xgb = fit_ml_model("xgboost", splits_hist, FEATURE_COLS, seed=42)
+    eval_lgb = fit_ml_model("lightgbm", splits_hist, FEATURE_COLS, seed=42)
+
+    perf_ridge = evaluate_monthly_top_k_selection(eval_ridge, market_full, te_p[0], "2025-12-31", top_k=10, hysteresis_buffer=20)
+    perf_xgb = evaluate_monthly_top_k_selection(eval_xgb, market_full, te_p[0], "2025-12-31", top_k=10, hysteresis_buffer=20)
+    perf_lgb = evaluate_monthly_top_k_selection(eval_lgb, market_full, te_p[0], "2025-12-31", top_k=10, hysteresis_buffer=20)
 
     perf_dict = {
         "Ridge": perf_ridge,
@@ -163,6 +189,56 @@ def main() -> None:
     summary_df.to_csv(tables_dir / "top10_vs_universe_performance.csv", index=False)
 
     plot_top_k_cumulative_alpha(perf_dict, figures_dir / "03_top10_cumulative_alpha.png")
+
+    # 7. Simulacao Walk-Forward Multi-Ano (2015-2025): Retreino Periodico vs. Modelos Congelados
+    print("\n" + "=" * 78)
+    print("7. SIMULACAO WALK-FORWARD MULTI-ANO (2015-2025): RETREINO ANUAL vs. CONGELADO")
+    print("=" * 78)
+    wf_res = run_walk_forward_simulation(
+        market=market_full,
+        start_date="2015-01-02",
+        end_date="2025-12-31",
+        models=("ridge", "xgboost", "lightgbm"),
+        retrain_every_months=12,
+        train_lookback_days=756,
+        top_k=10,
+        hysteresis_buffer=20,
+        seed=42,
+        verbose=False,
+    )
+    print(wf_res.summary_metrics.to_string(index=False))
+    wf_res.summary_metrics.to_csv(tables_dir / "comparison_frozen_vs_walkforward.csv", index=False)
+    plot_walk_forward_comparison(
+        wf_res.cumulative_returns,
+        wf_res.summary_metrics,
+        figures_dir / "04_walkforward_vs_frozen_comparison.png",
+    )
+
+    # 8. Comparacao de Politicas de Ponderacao: Hard Cut (Top 10 1/N) vs Soft Weighting (Top 15 Rank Linear)
+    print("\n" + "=" * 78)
+    print("8. POLITICAS DE CONSTRUCAO DE CARTEIRA: HARD CUT (TOP 10 1/N) vs SOFT WEIGHTING")
+    print("=" * 78)
+    weight_res = run_weighting_schemes_comparison(
+        market=market_full,
+        start_date="2015-01-02",
+        end_date="2025-12-31",
+        models=("ridge", "xgboost", "lightgbm"),
+        retrain_every_months=12,
+        train_lookback_days=756,
+        top_k_hard=10,
+        hysteresis_buffer=20,
+        top_k_soft=15,
+        seed=42,
+        verbose=False,
+    )
+    print(weight_res.summary_metrics.to_string(index=False))
+    weight_res.summary_metrics.to_csv(tables_dir / "comparison_weighting_schemes.csv", index=False)
+    plot_weighting_schemes_comparison(
+        weight_res.cumulative_returns,
+        weight_res.summary_metrics,
+        figures_dir / "05_weighting_schemes_comparison.png",
+    )
+
     print(f"\nExperimento de ML concluido com sucesso! Figuras em {figures_dir} e tabelas em {tables_dir}.")
 
 

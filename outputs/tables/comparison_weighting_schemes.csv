@@ -1,0 +1,9 @@
+Modelo,Esquema,Retorno_Acumulado_pct,CAGR_pct,Volatilidade_Anualizada_pct,Sharpe_Ratio,Max_Drawdown_pct,Turnover_Medio_Mensal_pct,Alpha_vs_Universo_pct
+Buy & Hold (Universo 1/N),Equiponderado (1/N),594.01,17.79,24.17,0.74,-37.16,0.0,0.0
+Ibovespa (BOVA11),Market-Cap Weighted,252.33,11.23,22.09,0.51,-40.32,0.0,-6.56
+ML: RIDGE,Hard Cut (Top 10 1/N com Histerese),1609.12,27.11,27.54,0.98,-39.34,27.7,9.32
+ML: RIDGE,Soft Weighting (Top 15 Rank Linear),1691.39,27.62,28.42,0.97,-35.23,56.3,9.83
+ML: XGBOOST,Hard Cut (Top 10 1/N com Histerese),822.5,20.66,28.7,0.72,-45.89,33.8,2.87
+ML: XGBOOST,Soft Weighting (Top 15 Rank Linear),877.1,21.24,28.18,0.75,-40.82,61.5,3.45
+ML: LIGHTGBM,Hard Cut (Top 10 1/N com Histerese),804.07,20.45,28.62,0.71,-41.76,34.7,2.66
+ML: LIGHTGBM,Soft Weighting (Top 15 Rank Linear),698.13,19.19,28.26,0.68,-42.05,61.6,1.4

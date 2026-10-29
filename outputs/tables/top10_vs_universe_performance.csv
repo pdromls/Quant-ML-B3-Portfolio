@@ -1,5 +1,5 @@
 Estrategia / Modelo,Retorno_Acumulado_pct,Alpha_vs_Mercado_pct
-Buy & Hold (Universo 1/N),132.55,0.0
-ML Baseline: Regressao Ridge,99.26,-14.31
-ML: XGBoost (Top 10),57.45,-32.29
-ML: LightGBM (Top 10),44.57,-37.83
+Buy & Hold (Universo 1/N),19.75,0.0
+ML Baseline: Regressao Ridge,30.22,8.74
+ML: XGBoost (Top 10),20.94,0.99
+ML: LightGBM (Top 10),5.96,-11.52

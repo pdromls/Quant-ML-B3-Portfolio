@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 
 from quant_ml_b3.features import FEATURE_COLS, build_ml_panel, extract_current_features
-from quant_ml_b3.metrics import compute_ml_metrics, evaluate_top_k_cumulative_performance
+from quant_ml_b3.metrics import compute_ml_metrics, evaluate_monthly_top_k_selection
 from quant_ml_b3.models import extract_feature_importance, fit_ml_model, predict_ml_model
 from quant_ml_b3.splits import split_temporal_70_20_10
 from test_features_and_splits import _make_synthetic_market
@@ -46,16 +46,21 @@ def test_all_three_models_train_predict_and_report_importance() -> None:
     assert abs(imp["LightGBM_Gain"].sum() - 1.0) < 1e-3
 
 
-def test_evaluate_top_k_cumulative_performance() -> None:
+def test_evaluate_monthly_top_k_selection() -> None:
     mkt = _make_synthetic_market(n_days=320, n_tickers=10, seed=456)
     panel = build_ml_panel(mkt, horizon=21, step=5)
     splits = split_temporal_70_20_10(panel, train_ratio=0.70, val_ratio=0.20, purge_days=21)
 
     fit_ridge = fit_ml_model("ridge", splits, FEATURE_COLS, seed=42)
-    preds = predict_ml_model(fit_ridge, splits.test).to_numpy()
-
-    perf = evaluate_top_k_cumulative_performance(splits.test, preds, top_k=3)
-    assert len(perf) == splits.meta["n_dates_test"]
+    perf = evaluate_monthly_top_k_selection(
+        fit_ridge,
+        mkt,
+        start_date=splits.meta["test_period"][0],
+        end_date=splits.meta["test_period"][1],
+        top_k=3,
+        hysteresis_buffer=5,
+    )
+    assert not perf.empty
     assert "top_k_cumulative" in perf.columns
     assert "universe_cumulative" in perf.columns
     assert "alpha_cumulative" in perf.columns
