@@ -567,8 +567,25 @@ with tab_pred_real:
             c4.metric("Ibovespa (BOVA11)", f"{ibov_ret:+.2f}%", delta=f"{alpha_ibov:+.2f}% vs. Ibov")
             c5.metric("Taxa de Sucesso", f"{win_count} de {tot_count} ({win_pct:.0f}%)", help="% de ações que superaram o Buy & Hold do Universo")
 
+            c_ord, _ = st.columns([2.8, 1.2])
+            with c_ord:
+                sort_order_month = st.radio(
+                    "Ordenação das Ações no Gráfico:",
+                    [
+                        "Ordem de Recomendação (Maior Peso / Rank do Modelo)",
+                        "Melhor Desempenho para o Pior (Maior Retorno %)",
+                    ],
+                    horizontal=True,
+                    key=f"sort_month_{target_month}_{selected_model_disp}",
+                )
+
+            if "Melhor Desempenho" in sort_order_month:
+                sub_model_plot = sub_model.sort_values("stock_return_pct", ascending=False).copy()
+            else:
+                sub_model_plot = sub_model.sort_values("rank", ascending=True).copy()
+
             fig_bar = px.bar(
-                sub_model,
+                sub_model_plot,
                 x="ticker",
                 y="stock_return_pct",
                 color="beat_market",
@@ -890,8 +907,25 @@ with tab_pred_real:
             c4.metric("Ibovespa (BOVA11)", f"{ibov_ret:+.2f}%", delta=f"{alpha_ibov:+.2f}% vs. Ibov")
             c5.metric("Taxa de Sucesso no Dia", f"{win_count} de {tot_count} ({win_pct:.0f}%)", help="% de ações que superaram o Buy & Hold do Universo até o pregão selecionado")
 
+            c_ord_day, _ = st.columns([2.8, 1.2])
+            with c_ord_day:
+                sort_order_day = st.radio(
+                    "Ordenação das Ações no Gráfico:",
+                    [
+                        "Ordem de Recomendação (Maior Peso / Rank do Modelo)",
+                        "Melhor Desempenho para o Pior (Maior Retorno %)",
+                    ],
+                    horizontal=True,
+                    key=f"sort_day_{tt_str}_{selected_model_disp}",
+                )
+
+            if "Melhor Desempenho" in sort_order_day:
+                sub_model_plot = sub_model.sort_values("stock_return_day_pct", ascending=False).copy()
+            else:
+                sub_model_plot = sub_model.sort_values("rank", ascending=True).copy()
+
             fig_bar = px.bar(
-                sub_model,
+                sub_model_plot,
                 x="ticker",
                 y="stock_return_day_pct",
                 color="beat_market_day",
@@ -942,10 +976,9 @@ with tab_pred_real:
         view_type = st.radio(
             "Janela de Inspeção:",
             [
-                "⚡ Visão Compacta do Ano Corrente (YTD 2026: Modelo vs. Mercado e Previsões)",
+                "⚡ Visão Compacta por Ano (Modelo vs. Mercado e Previsões)",
                 "📅 Inspecionar por Data Específica (Calendário de Pregões Diários)",
-                "🔴 Previsões Mês a Mês em 2026 (Auditar Carteiras Individuais)",
-                "📜 Histórico Multi-Ano Completo (Auditar Qualquer Mês: 2015–2026)",
+                "🗓️ Auditoria Mês a Mês (Histórico Completo 2015–2026)",
             ],
             index=0,
         )
@@ -959,9 +992,7 @@ with tab_pred_real:
         )
 
     all_months = sorted(df_holdings["month_label"].unique(), reverse=True)
-    months_2026 = [m for m in all_months if m >= "2026-01"]
-    if not months_2026:
-        months_2026 = all_months[:12]
+    available_years = sorted(df_monthly["month_label"].str[:4].unique(), reverse=True)
 
     model_key_map = {
         "Regressão Ridge": "Ridge",
@@ -972,24 +1003,42 @@ with tab_pred_real:
     curr_scheme = "Soft Weighting (Top 15)" if "Soft" in weighting_choice else "Hard Cut (Top 10)"
 
     if "Visão Compacta" in view_type:
-        st.markdown("#### ⚡ Desempenho Consolidado no Ano de 2026 (Year-to-Date: 01/01/2026 a 29/10/2026)")
-        st.caption("Visão agregada do ano corrente comparando o quanto cada modelo de Machine Learning previu e entregou vs. o mercado (Buy & Hold 1/N e Ibovespa).")
+        c_yr_sel, _ = st.columns([1.8, 2.2])
+        with c_yr_sel:
+            selected_compact_year = st.selectbox(
+                "Selecione o Ano para a Visão Compacta:",
+                available_years,
+                index=0,
+                help="Selecione o ano desejado para auditar o desempenho consolidado e as previsões daquele período.",
+            )
 
-        df_m26 = df_monthly[df_monthly["month_label"] >= "2026-01"].sort_values("month_label").reset_index(drop=True)
+        is_current_year = (selected_compact_year == available_years[0])
+        year_status = "(Year-to-Date: 01/01/2026 a 29/10/2026)" if is_current_year else f"(Ano Fechado: 01/01/{selected_compact_year} a 31/12/{selected_compact_year})"
+        st.markdown(
+            f"#### ⚡ Desempenho Consolidado no Ano de {selected_compact_year} "
+            f"<span style='font-size:0.88rem; color:#94A3B8; font-weight:normal;'>{year_status}</span>",
+            unsafe_allow_html=True,
+        )
+        st.caption(
+            f"Visão agregada do ano de {selected_compact_year} comparando o quanto cada modelo de Machine Learning "
+            "previu e entregou vs. o mercado (Buy & Hold 1/N e Ibovespa)."
+        )
 
-        # Cumulative YTD compound series for each
-        cum_univ_ytd = (np.cumprod(1.0 + df_m26["Universe"]) - 1.0) * 100.0
-        cum_ibov_ytd = (np.cumprod(1.0 + df_m26["Ibovespa"]) - 1.0) * 100.0
+        df_m_yr = df_monthly[df_monthly["month_label"].str.startswith(selected_compact_year)].sort_values("month_label").reset_index(drop=True)
+
+        # Cumulative compound series for each
+        cum_univ_ytd = (np.cumprod(1.0 + df_m_yr["Universe"]) - 1.0) * 100.0
+        cum_ibov_ytd = (np.cumprod(1.0 + df_m_yr["Ibovespa"]) - 1.0) * 100.0
 
         r_univ_ytd = float(cum_univ_ytd.iloc[-1])
         r_ibov_ytd = float(cum_ibov_ytd.iloc[-1])
 
-        # Calculate YTD for each model
+        # Calculate for each model
         cum_models_ytd = {}
         for m_disp, m_key in model_key_map.items():
             col = f"{m_key}_{scheme_suffix}"
-            if col in df_m26.columns:
-                cum_models_ytd[m_key] = (np.cumprod(1.0 + df_m26[col]) - 1.0) * 100.0
+            if col in df_m_yr.columns:
+                cum_models_ytd[m_key] = (np.cumprod(1.0 + df_m_yr[col]) - 1.0) * 100.0
 
         if tab2_model_choice == "Comparar os 3 Modelos Lado a Lado":
             r_ridge_ytd = float(cum_models_ytd["Ridge"].iloc[-1]) if "Ridge" in cum_models_ytd else 0.0
@@ -997,21 +1046,21 @@ with tab_pred_real:
             r_lgb_ytd = float(cum_models_ytd["Lightgbm"].iloc[-1]) if "Lightgbm" in cum_models_ytd else 0.0
 
             c1, c2, c3, c4, c5 = st.columns(5)
-            c1.metric("Ridge (YTD 2026)", f"{r_ridge_ytd:+.2f}%", delta=f"{r_ridge_ytd - r_univ_ytd:+.2f}% vs. B&H")
-            c2.metric("XGBoost (YTD 2026)", f"{r_xgb_ytd:+.2f}%", delta=f"{r_xgb_ytd - r_univ_ytd:+.2f}% vs. B&H")
-            c3.metric("LightGBM (YTD 2026)", f"{r_lgb_ytd:+.2f}%", delta=f"{r_lgb_ytd - r_univ_ytd:+.2f}% vs. B&H")
-            c4.metric("Buy & Hold Universo (1/N)", f"{r_univ_ytd:+.2f}%", help="Média equiponderada de todas as 41 ações em 2026")
-            c5.metric("Ibovespa (BOVA11)", f"{r_ibov_ytd:+.2f}%", help="Índice oficial ponderado da B3 em 2026")
+            c1.metric(f"Ridge ({selected_compact_year})", f"{r_ridge_ytd:+.2f}%", delta=f"{r_ridge_ytd - r_univ_ytd:+.2f}% vs. B&H")
+            c2.metric(f"XGBoost ({selected_compact_year})", f"{r_xgb_ytd:+.2f}%", delta=f"{r_xgb_ytd - r_univ_ytd:+.2f}% vs. B&H")
+            c3.metric(f"LightGBM ({selected_compact_year})", f"{r_lgb_ytd:+.2f}%", delta=f"{r_lgb_ytd - r_univ_ytd:+.2f}% vs. B&H")
+            c4.metric("Buy & Hold Universo (1/N)", f"{r_univ_ytd:+.2f}%", help=f"Média equiponderada de todas as 41 ações em {selected_compact_year}")
+            c5.metric("Ibovespa (BOVA11)", f"{r_ibov_ytd:+.2f}%", help=f"Índice oficial ponderado da B3 em {selected_compact_year}")
 
-            # Chart 1: YTD Cumulative Curve in 2026
+            # Chart 1: Cumulative Curve
             fig_ytd = go.Figure()
             fig_ytd.add_trace(go.Scatter(
-                x=pd.to_datetime(df_m26["date"]), y=cum_univ_ytd,
+                x=pd.to_datetime(df_m_yr["date"]), y=cum_univ_ytd,
                 mode="lines+markers", name="Buy & Hold Universo (1/N)",
                 line=dict(color="#94A3B8", width=2, dash="dash"),
             ))
             fig_ytd.add_trace(go.Scatter(
-                x=pd.to_datetime(df_m26["date"]), y=cum_ibov_ytd,
+                x=pd.to_datetime(df_m_yr["date"]), y=cum_ibov_ytd,
                 mode="lines+markers", name="Ibovespa (BOVA11)",
                 line=dict(color="#38BDF8", width=2, dash="dot"),
             ))
@@ -1019,15 +1068,15 @@ with tab_pred_real:
             for m_key in ["Ridge", "Xgboost", "Lightgbm"]:
                 if m_key in cum_models_ytd:
                     fig_ytd.add_trace(go.Scatter(
-                        x=pd.to_datetime(df_m26["date"]), y=cum_models_ytd[m_key],
+                        x=pd.to_datetime(df_m_yr["date"]), y=cum_models_ytd[m_key],
                         mode="lines+markers", name=f"ML: {m_key}",
                         line=dict(color=colors_map[m_key], width=3),
                     ))
             fig_ytd.update_layout(
                 template="plotly_dark", height=380,
-                title="Evolução Patrimonial Acumulada no Ano de 2026 (YTD %)",
-                xaxis=dict(title="Mês", showgrid=True, gridcolor="#334155"),
-                yaxis=dict(title="Retorno Acumulado em 2026 (%)", showgrid=True, gridcolor="#334155", ticksuffix="%"),
+                title=f"Evolução Patrimonial Acumulada no Ano de {selected_compact_year} (%)",
+                xaxis=dict(title=f"Mês de {selected_compact_year}", showgrid=True, gridcolor="#334155"),
+                yaxis=dict(title=f"Retorno Acumulado em {selected_compact_year} (%)", showgrid=True, gridcolor="#334155", ticksuffix="%"),
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
                 hovermode="x unified",
             )
@@ -1041,46 +1090,46 @@ with tab_pred_real:
             alpha_ibov = r_mod_ytd - r_ibov_ytd
 
             c1, c2, c3, c4, c5 = st.columns(5)
-            c1.metric(f"{tab2_model_choice} (YTD)", f"{r_mod_ytd:+.2f}%", delta=f"{alpha_univ:+.2f}% vs. B&H")
-            c2.metric("Buy & Hold Universo (1/N)", f"{r_univ_ytd:+.2f}%", help="Média equiponderada de todas as 41 ações em 2026")
-            c3.metric("Ibovespa (BOVA11)", f"{r_ibov_ytd:+.2f}%", help="Índice oficial ponderado da B3 em 2026")
+            c1.metric(f"{tab2_model_choice} ({selected_compact_year})", f"{r_mod_ytd:+.2f}%", delta=f"{alpha_univ:+.2f}% vs. B&H")
+            c2.metric("Buy & Hold Universo (1/N)", f"{r_univ_ytd:+.2f}%", help=f"Média equiponderada de todas as 41 ações em {selected_compact_year}")
+            c3.metric("Ibovespa (BOVA11)", f"{r_ibov_ytd:+.2f}%", help=f"Índice oficial ponderado da B3 em {selected_compact_year}")
             c4.metric("Alpha vs. Universo", f"{alpha_univ:+.2f}%", delta=f"{alpha_univ:+.2f}% vs. B&H")
             c5.metric("Alpha vs. Ibovespa", f"{alpha_ibov:+.2f}%", delta=f"{alpha_ibov:+.2f}% vs. Ibov")
 
-            # Chart 1: YTD Cumulative Curve for single model
+            # Chart 1: Cumulative Curve for single model
             fig_ytd = go.Figure()
             fig_ytd.add_trace(go.Scatter(
-                x=pd.to_datetime(df_m26["date"]), y=cum_univ_ytd,
+                x=pd.to_datetime(df_m_yr["date"]), y=cum_univ_ytd,
                 mode="lines+markers", name="Buy & Hold Universo (1/N)",
                 line=dict(color="#94A3B8", width=2, dash="dash"),
             ))
             fig_ytd.add_trace(go.Scatter(
-                x=pd.to_datetime(df_m26["date"]), y=cum_ibov_ytd,
+                x=pd.to_datetime(df_m_yr["date"]), y=cum_ibov_ytd,
                 mode="lines+markers", name="Ibovespa (BOVA11)",
                 line=dict(color="#38BDF8", width=2, dash="dot"),
             ))
             fig_ytd.add_trace(go.Scatter(
-                x=pd.to_datetime(df_m26["date"]), y=cum_models_ytd[target_key],
+                x=pd.to_datetime(df_m_yr["date"]), y=cum_models_ytd[target_key],
                 mode="lines+markers", name=f"{tab2_model_choice}",
                 line=dict(color="#2563EB" if target_key == "Ridge" else ("#F59E0B" if target_key == "Xgboost" else "#10B981"), width=3.5),
                 fill="tonexty", fillcolor="rgba(37, 99, 235, 0.08)",
             ))
             fig_ytd.update_layout(
                 template="plotly_dark", height=380,
-                title=f"Evolução Patrimonial Acumulada em 2026: {tab2_model_choice} vs. Mercado",
-                xaxis=dict(title="Mês", showgrid=True, gridcolor="#334155"),
-                yaxis=dict(title="Retorno Acumulado em 2026 (%)", showgrid=True, gridcolor="#334155", ticksuffix="%"),
+                title=f"Evolução Patrimonial Acumulada em {selected_compact_year}: {tab2_model_choice} vs. Mercado",
+                xaxis=dict(title=f"Mês de {selected_compact_year}", showgrid=True, gridcolor="#334155"),
+                yaxis=dict(title=f"Retorno Acumulado em {selected_compact_year} (%)", showgrid=True, gridcolor="#334155", ticksuffix="%"),
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
                 hovermode="x unified",
             )
             st.plotly_chart(fig_ytd, use_container_width=True)
 
         # Monthly Prediction vs Reality Audit Table & Bar Chart
-        st.markdown("##### 📋 O que o Modelo Previu vs. O que o Mercado Rendeu Mês a Mês em 2026:")
+        st.markdown(f"##### 📋 O que o Modelo Previu vs. O que o Mercado Rendeu Mês a Mês em {selected_compact_year}:")
 
         target_m_for_table = "Ridge" if tab2_model_choice == "Comparar os 3 Modelos Lado a Lado" else model_key_map.get(tab2_model_choice, "Ridge")
         sub_h = df_holdings[
-            (df_holdings["month_label"] >= "2026-01")
+            (df_holdings["month_label"].str.startswith(selected_compact_year))
             & (df_holdings["model"] == target_m_for_table)
             & (df_holdings["scheme"] == curr_scheme)
         ].copy()
@@ -1129,8 +1178,8 @@ with tab_pred_real:
         ))
         fig_bar_ytd.update_layout(
             barmode="group", template="plotly_dark", height=380,
-            title=f"Retornos Mês a Mês em 2026: Modelo {target_m_for_table} vs. Benchmarks de Mercado",
-            xaxis=dict(title="Mês de 2026"),
+            title=f"Retornos Mês a Mês em {selected_compact_year}: Modelo {target_m_for_table} vs. Benchmarks de Mercado",
+            xaxis=dict(title=f"Mês de {selected_compact_year}"),
             yaxis=dict(title="Retorno Mensal (%)", ticksuffix="%"),
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
         )
@@ -1153,37 +1202,59 @@ with tab_pred_real:
             weighting_scheme_choice=weighting_choice,
         )
 
-    elif "Mês a Mês" in view_type:
-        c_sel, _ = st.columns([2, 2])
-        with c_sel:
-            selected_month_2026 = st.selectbox(
-                "Selecione o Mês de 2026 para Inspecionar Previsões e Desempenho:",
-                months_2026,
-                index=0,
-                format_func=lambda m: pd.to_datetime(m + "-01").strftime("%m/%Y") + (" (Mês Mais Recente / Em Andamento)" if m == months_2026[0] else " (Mês Fechado)"),
-            )
-        render_month_audit_view(
-            df_h=df_holdings,
-            target_month=selected_month_2026,
-            selected_model_disp=tab2_model_choice,
-            weighting_scheme_choice=weighting_choice,
-            subtitle_prefix="Previsões e Desempenho em 2026",
-        )
     else:
-        c_sel, _ = st.columns([2, 2])
-        with c_sel:
-            selected_hist_month = st.selectbox(
-                "Selecione Qualquer Mês Histórico (2015–2026):",
+        # Auditoria Mês a Mês (Histórico Completo 2015–2026) com navegação rápida
+        if "selected_audit_month" not in st.session_state:
+            st.session_state["selected_audit_month"] = all_months[0]
+
+        curr_m = st.session_state["selected_audit_month"]
+        if curr_m not in all_months:
+            curr_m = all_months[0]
+            st.session_state["selected_audit_month"] = curr_m
+        curr_m_idx = all_months.index(curr_m)
+
+        c_sel_m, c_prev_m, c_next_m, c_today_m = st.columns([2.5, 1.2, 1.2, 1.2])
+
+        with c_prev_m:
+            st.write("")
+            st.write("")
+            # In descending list, chronologically previous month is at index + 1
+            if st.button("◀ Mês Anterior", use_container_width=True, disabled=(curr_m_idx >= len(all_months) - 1)):
+                st.session_state["selected_audit_month"] = all_months[curr_m_idx + 1]
+                st.rerun()
+
+        with c_next_m:
+            st.write("")
+            st.write("")
+            # Chronologically next month is at index - 1
+            if st.button("Próximo Mês ▶", use_container_width=True, disabled=(curr_m_idx <= 0)):
+                st.session_state["selected_audit_month"] = all_months[curr_m_idx - 1]
+                st.rerun()
+
+        with c_today_m:
+            st.write("")
+            st.write("")
+            if st.button("Mês Mais Recente", use_container_width=True):
+                st.session_state["selected_audit_month"] = all_months[0]
+                st.rerun()
+
+        with c_sel_m:
+            picked_m = st.selectbox(
+                "Selecione o Mês para Auditar Carteiras e Previsões (2015–2026):",
                 all_months,
-                index=0,
-                format_func=lambda m: pd.to_datetime(m + "-01").strftime("%m/%Y"),
+                index=curr_m_idx,
+                format_func=lambda m: pd.to_datetime(m + "-01").strftime("%m/%Y") + (" (Mês Mais Recente / Em Andamento)" if m == all_months[0] else ""),
             )
+            if picked_m != st.session_state["selected_audit_month"]:
+                st.session_state["selected_audit_month"] = picked_m
+                st.rerun()
+
         render_month_audit_view(
             df_h=df_holdings,
-            target_month=selected_hist_month,
+            target_month=st.session_state["selected_audit_month"],
             selected_model_disp=tab2_model_choice,
             weighting_scheme_choice=weighting_choice,
-            subtitle_prefix="Auditoria de Mês Histórico",
+            subtitle_prefix="Auditoria de Carteira Mensal",
         )
 
 
@@ -1201,6 +1272,21 @@ with tab_explain:
 
     if not df_importance.empty:
         df_imp = df_importance.copy()
+        feature_name_map = {
+            "vol_21d": "Volatilidade Realizada (21 dias)",
+            "bb_pos": "Posição nas Bandas de Bollinger",
+            "ret_63d": "Momentum Trimestral (Retorno 63d)",
+            "ret_21d": "Retorno Mensal (21 dias)",
+            "ret_10d": "Retorno Quinzenal (10 dias)",
+            "ret_5d": "Retorno Semanal (5 dias)",
+            "ret_1d": "Retorno Diário (1 dia)",
+            "rsi_14": "RSI - Força Relativa (14 dias)",
+            "sma_ratio": "Inclinação entre Médias (SMA 20/50)",
+            "sma50_dist": "Distância da Média Móvel de 50 dias",
+            "sma20_dist": "Distância da Média Móvel de 20 dias",
+            "vol_ratio": "Aceleração de Volume (5d vs. 21d)",
+        }
+        df_imp["Nome_Feature"] = df_imp["Feature"].map(feature_name_map).fillna(df_imp["Feature"])
         df_imp["Ridge_Beta_bps"] = df_imp["Ridge_Beta"] * 10000.0
         df_imp["XGBoost_Gain_pct"] = df_imp["XGBoost_Gain"] * 100.0
         df_imp["LightGBM_Gain_pct"] = df_imp["LightGBM_Gain"] * 100.0
@@ -1220,9 +1306,9 @@ with tab_explain:
             fig_imp = px.bar(
                 df_sorted,
                 x="Ridge_Beta_bps",
-                y="Feature",
+                y="Nome_Feature",
                 orientation="h",
-                labels={"Ridge_Beta_bps": "Coeficiente Beta (bps)", "Feature": "Atributo Técnico"},
+                labels={"Ridge_Beta_bps": "Coeficiente Beta (bps)", "Nome_Feature": "Indicador Técnico"},
                 title="Pesos dos Fatores na Regressão Ridge (em Basis Points)",
                 color="Ridge_Beta_bps",
                 color_continuous_scale="Blues",
@@ -1233,9 +1319,9 @@ with tab_explain:
             fig_imp = px.bar(
                 df_sorted,
                 x="XGBoost_Gain_pct",
-                y="Feature",
+                y="Nome_Feature",
                 orientation="h",
-                labels={"XGBoost_Gain_pct": "Ganho de Informação (%)", "Feature": "Atributo Técnico"},
+                labels={"XGBoost_Gain_pct": "Ganho de Informação (%)", "Nome_Feature": "Indicador Técnico"},
                 title="Importância dos Fatores no XGBoost (% de Ganho de Árvores)",
                 color="XGBoost_Gain_pct",
                 color_continuous_scale="Oranges",
@@ -1246,9 +1332,9 @@ with tab_explain:
             fig_imp = px.bar(
                 df_sorted,
                 x="LightGBM_Gain_pct",
-                y="Feature",
+                y="Nome_Feature",
                 orientation="h",
-                labels={"LightGBM_Gain_pct": "Ganho de Informação (%)", "Feature": "Atributo Técnico"},
+                labels={"LightGBM_Gain_pct": "Ganho de Informação (%)", "Nome_Feature": "Indicador Técnico"},
                 title="Importância dos Fatores no LightGBM (% de Ganho por Folha)",
                 color="LightGBM_Gain_pct",
                 color_continuous_scale="Greens",
@@ -1261,9 +1347,9 @@ with tab_explain:
     st.markdown(
         """
         ### 💡 Por que os Pesos Fazem Sentido Econômico?
-        1. **`ret_63d` Positivo (+15 a +20 bps):** Captura o efeito Momentum trimestral clássico da literatura de Finanças (ações com balanços sólidos continuam subindo).
-        2. **`ret_21d` Negativo (-10 a -15 bps):** Reflete a **Reversão à Média Mensal (*Short-Term Reversal*)**. Ativos que esticaram demais nos últimos 21 dias tendem a sofrer realização de lucros.
-        3. **`vol_21d` Negativo:** Penaliza ativos com volatilidade extrema, reduzindo o risco de cauda e drawdowns severos.
+        1. **`ret_63d` (Momentum Trimestral):** Ações com tendência sólida e revisões positivas nos últimos 3 meses continuam apresentando fluxo comprador sustentado.
+        2. **`ret_1d` e `bb_pos` (Filtro de Sobrecompra / Reversão de Curto Prazo):** Coeficientes negativos penalizam ações excessivamente esticadas nas Bandas de Bollinger ou que tiveram repiques parabólicos de 1 dia, evitando compras no topo.
+        3. **`vol_21d` (Volatilidade Realizada):** Principal divisor de águas nos modelos de árvore (30,6% de ganho no XGBoost), calibrando o risco de cauda e o prêmio exigido pelo mercado.
         """
     )
 

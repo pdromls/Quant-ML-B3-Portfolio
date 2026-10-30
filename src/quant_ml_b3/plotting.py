@@ -21,29 +21,47 @@ MODEL_PALETTE = {
 
 def plot_feature_importance(imp_df: pd.DataFrame, out_path: str | Path) -> None:
     """Generate the 3-panel Feature Importance comparison (XGBoost Gain %, LightGBM Gain %, Ridge Standardized Beta)."""
-    fig, axes = plt.subplots(1, 3, figsize=(16, 6.2), dpi=160)
+    fig, axes = plt.subplots(1, 3, figsize=(18, 6.5), dpi=160)
     fig.patch.set_facecolor("white")
 
+    feature_name_map = {
+        "vol_21d": "Volatilidade Realizada (21d)",
+        "bb_pos": "Posição Bandas Bollinger",
+        "ret_63d": "Momentum Trimestral (63d)",
+        "ret_21d": "Retorno Mensal (21d)",
+        "ret_10d": "Retorno Quinzenal (10d)",
+        "ret_5d": "Retorno Semanal (5d)",
+        "ret_1d": "Retorno Diário (1d)",
+        "rsi_14": "RSI Força Relativa (14d)",
+        "sma_ratio": "Razão Médias (SMA 20/50)",
+        "sma50_dist": "Distância Média 50d",
+        "sma20_dist": "Distância Média 20d",
+        "vol_ratio": "Volume Relativo (5d/21d)",
+    }
+
+    df_plot = imp_df.copy()
+    df_plot["Feature_Label"] = df_plot["Feature"].map(feature_name_map).fillna(df_plot["Feature"])
+
     # 1. XGBoost Gain (%)
-    sub_xgb = imp_df.sort_values("XGBoost_Gain", ascending=True)
-    axes[0].barh(sub_xgb["Feature"], sub_xgb["XGBoost_Gain"] * 100.0, color="#2563EB", height=0.68)
+    sub_xgb = df_plot.sort_values("XGBoost_Gain", ascending=True)
+    axes[0].barh(sub_xgb["Feature_Label"], sub_xgb["XGBoost_Gain"] * 100.0, color="#2563EB", height=0.68)
     axes[0].set_title("XGBoost (Ganho Relativo %)", fontsize=12, fontweight="bold", pad=10)
     axes[0].set_xlabel("Ganho Relativo (%)")
     axes[0].grid(axis="x", linestyle="--", alpha=0.5)
     axes[0].spines[["top", "right"]].set_visible(False)
 
     # 2. LightGBM Gain (%)
-    sub_lgb = imp_df.sort_values("LightGBM_Gain", ascending=True)
-    axes[1].barh(sub_lgb["Feature"], sub_lgb["LightGBM_Gain"] * 100.0, color="#059669", height=0.68)
+    sub_lgb = df_plot.sort_values("LightGBM_Gain", ascending=True)
+    axes[1].barh(sub_lgb["Feature_Label"], sub_lgb["LightGBM_Gain"] * 100.0, color="#059669", height=0.68)
     axes[1].set_title("LightGBM (Ganho Relativo %)", fontsize=12, fontweight="bold", pad=10)
     axes[1].set_xlabel("Ganho Relativo (%)")
     axes[1].grid(axis="x", linestyle="--", alpha=0.5)
     axes[1].spines[["top", "right"]].set_visible(False)
 
     # 3. Ridge Standardized Beta (bps)
-    sub_rdg = imp_df.reindex(imp_df["Ridge_Beta"].abs().sort_values(ascending=True).index)
+    sub_rdg = df_plot.reindex(df_plot["Ridge_Beta"].abs().sort_values(ascending=True).index)
     colors_rdg = ["#D97706" if v >= 0 else "#DC2626" for v in sub_rdg["Ridge_Beta"]]
-    axes[2].barh(sub_rdg["Feature"], sub_rdg["Ridge_Beta"] * 10000.0, color=colors_rdg, height=0.68)
+    axes[2].barh(sub_rdg["Feature_Label"], sub_rdg["Ridge_Beta"] * 10000.0, color=colors_rdg, height=0.68)
     axes[2].axvline(0, color="#374151", linewidth=1.1)
     axes[2].set_title("Regressão Ridge (Coeficiente Padronizado +/-)", fontsize=12, fontweight="bold", pad=10)
     axes[2].set_xlabel("Coeficiente Padronizado (bps)")

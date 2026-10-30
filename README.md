@@ -49,12 +49,13 @@ Objetivo: Avaliar a performance de longo prazo das estratégias contra o mercado
 #### Aba 2: Previsão vs. Realidade (Auditoria de Decisões e Calendário de Pregões)
 Objetivo: Inspecionar exatamente o que cada modelo recomendou comprar e verificar o que aconteceu no mercado real.
 
-Esta aba possui 4 modos de inspeção selecionáveis via radio button:
+Esta aba possui 3 modos de inspeção selecionáveis via radio button:
 
-1. Visão Compacta do Ano Corrente (YTD 2026):
-   - Exibe 5 cartões KPI consolidados do ano corrente (Ridge, XGBoost, LightGBM, Buy & Hold Universo e Ibovespa).
-   - Apresenta o gráfico de evolução de capital ao longo de 2026.
-   - Apresenta gráfico de barras com os retornos mês a mês em 2026 para auditar a consistência das previsões.
+1. Visão Compacta por Ano (Histórico Completo 2015–2026):
+   - Seletor de Ano: Permite escolher qualquer ano da série histórica (2015 a 2026, com o ano corrente selecionado por padrão).
+   - Exibe 5 cartões KPI consolidados do ano escolhido (Ridge, XGBoost, LightGBM, Buy & Hold Universo e Ibovespa).
+   - Apresenta o gráfico de evolução de capital ao longo daquele ano.
+   - Apresenta gráfico de barras com os retornos mês a mês para auditar a consistência das previsões.
    - Tabela detalhada mês a mês com retorno do modelo, retorno do benchmark, Alpha e taxa de acerto.
 
 2. Inspeção Pontual por Data Específica (Calendário de Pregões Diários):
@@ -62,26 +63,38 @@ Esta aba possui 4 modos de inspeção selecionáveis via radio button:
    - Trava e Snap Inteligente de Dias Úteis: Se o usuário selecionar um sábado, domingo ou feriado da B3, o sistema exibe uma mensagem informativa e ajusta automaticamente o cálculo para o pregão imediatamente anterior com cotação oficial.
    - Barra de Navegação Rápida: Botões [Pregão Anterior], [Próximo Pregão] e [Hoje / Mais Recente] para avançar ou recuar dia a dia apenas entre pregões reais da bolsa.
    - Apuração de Cotações Reais: Compara o preço de compra no 1º pregão do mês (data base da recomendação T0) com o preço de fechamento no dia selecionado (T).
-   - Métricas do Dia: Calcula o retorno acumulado da ação até aquele dia, a contribuição ponderada para a carteira, o retorno do Buy & Hold do Universo e o retorno do Ibovespa (BOVA11) no mesmo período.
+   - Alternador de Ordenação: Opção para visualizar o gráfico na ordem de recomendação do modelo (maior peso para o menor) ou ordenado do melhor desempenho para o pior.
    - Gráfico de Barras com Cores Semânticas: Ações com retorno superior ao benchmark são coloridas em verde; ações com retorno inferior são coloridas em vermelho. Inclui linhas de referência horizontais para Buy & Hold e Ibovespa.
    - Modo Comparativo Lado a Lado: Se a opção "Comparar os 3 Modelos Lado a Lado" for selecionada, o dashboard renderiza o confronto simultâneo de Ridge, XGBoost e LightGBM na data escolhida.
 
-3. Previsões Mês a Mês em 2026:
-   - Seletor dropdown para auditar qualquer mês fechado ou em andamento de 2026, exibindo a alocação emitida no primeiro pregão e o resultado apurado.
-
-4. Histórico Multi-Ano Completo (2015–2026):
-   - Seletor dropdown cobrindo todos os 142 meses da série temporal para análise histórica individual.
+3. Auditoria Mês a Mês (Histórico Completo 2015–2026):
+   - Navegação Rápida entre Meses: Botões [◀ Mês Anterior], [Próximo Mês ▶] e [Mês Mais Recente] para percorrer a história mês a mês sem necessidade de reabrir o seletor.
+   - Seletor dropdown cobrindo todos os 142 meses da série temporal para análise individual detalhada.
+   - Alternador de Ordenação: Permite alternar entre ordenação por recomendação do modelo (maior peso / rank) ou por melhor retorno percentual.
 
 #### Aba 3: Explicabilidade e Importância Econômica dos Fatores
 Objetivo: Compreender os fundamentos econômicos por trás das decisões dos modelos.
-- Gráficos de Barras Horizontais:
+- Gráficos de Barras Horizontais com Nomes Intuitivos em Português:
   - Regressão Ridge: Coeficientes Beta Padronizados expressos em basis points (bps).
   - XGBoost: Importância por ganho de informação (Gain %) em nível de nó.
   - LightGBM: Importância por ganho percentual por folha (leaf-wise split).
+- Mapeamento Claro dos 12 Indicadores Técnicos:
+  - Volatilidade Realizada (21 dias)
+  - Posição nas Bandas de Bollinger
+  - Momentum Trimestral (Retorno 63d)
+  - Retorno Mensal (21 dias)
+  - Retorno Quinzenal (10 dias)
+  - Retorno Semanal (5 dias)
+  - Retorno Diário (1 dia)
+  - RSI - Força Relativa (14 dias)
+  - Inclinação entre Médias (SMA 20/50)
+  - Distância da Média Móvel de 50 dias
+  - Distância da Média Móvel de 20 dias
+  - Aceleração de Volume (5d vs. 21d)
 - Interpretação Financeira dos Fatores:
   - ret_63d positivo: Captura o efeito Momentum trimestral da literatura quantitativa clássica.
-  - ret_21d negativo: Reflete a Reversão à Média mensal (Short-Term Reversal), penalizando ativos sobrecomprados.
-  - vol_21d negativo: Penaliza ações com alta volatilidade, protegendo a carteira contra riscos de cauda.
+  - ret_1d e bb_pos negativos: Refletem o filtro de sobrecompra e reversão de curto prazo, penalizando ativos sobrecomprados.
+  - vol_21d: Principal variável de calibração do prêmio de risco nos modelos de árvore.
 
 #### Aba 4: Data Quality Assurance e Validação de Integridade
 Objetivo: Auditar a base de dados subjacente.
@@ -196,6 +209,9 @@ Ao abrir e executar o notebook, você tem acesso a:
 ```text
 quant-ml-b3-portfolio/
 ├── app.py                                 # Terminal Web Interativo em Streamlit
+├── Dockerfile                             # Imagem containerizada otimizada (Python 3.11 + libgomp1)
+├── docker-compose.yml                     # Orquestrador para execução com 1 comando
+├── .dockerignore                          # Filtro de arquivos para o build do container
 ├── README.md                              # Documentação técnica completa
 ├── pyproject.toml                         # Configurações de empacotamento moderno e pytest
 ├── requirements.txt                       # Dependências do projeto
@@ -231,30 +247,39 @@ quant-ml-b3-portfolio/
 
 ## Como Executar o Projeto
 
-### 1. Instalação das Dependências
+### Opção A: Execução via Docker (Recomendado / 1 Comando)
+Caso possua o Docker instalado, basta executar no diretório raiz:
+```bash
+docker compose up
+```
+O container baixará as dependências, configurará o ambiente Linux com suporte multithread para LightGBM/XGBoost e disponibilizará o terminal web em `http://localhost:8501`.
+
+### Opção B: Execução Local com Python
+
+#### 1. Instalação das Dependências
 ```bash
 git clone https://github.com/pdromls/quant-ml-b3-portfolio.git
 cd quant-ml-b3-portfolio
 pip install -r requirements.txt
 ```
 
-### 2. Executar o Terminal Web Streamlit
+#### 2. Executar o Terminal Web Streamlit
 ```bash
 streamlit run app.py
 ```
 O dashboard será aberto no navegador em `http://localhost:8501`.
 
-### 3. Abrir o Relatório em Jupyter Notebook
+#### 3. Abrir o Relatório em Jupyter Notebook
 ```bash
 jupyter notebook notebooks/01_ml_quant_strategies_b3.ipynb
 ```
 
-### 4. Executar os Testes Automatizados (pytest)
+#### 4. Executar os Testes Automatizados (pytest)
 ```bash
 pytest -v
 ```
 
-### 5. Executar os Pipelines de Modelagem e Exportação
+#### 5. Executar os Pipelines de Modelagem e Exportação
 ```bash
 # Executar os experimentos de Machine Learning e simulação Walk-Forward:
 python scripts/run_experiment.py

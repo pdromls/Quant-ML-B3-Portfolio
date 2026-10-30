@@ -1,0 +1,11 @@
+services:
+  terminal:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: quant-alpha-terminal
+    ports:
+      - "8501:8501"
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
