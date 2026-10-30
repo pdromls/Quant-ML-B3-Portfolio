@@ -461,9 +461,9 @@ with tab_pred_real:
         if is_latest_month:
             st.info(
                 f"💡 **Carteira Recomendada para o Mês Vigente ({month_disp}):** "
-                f"Esta é a alocação calculada no 1º pregão do mês (<b>{rebal_dt}</b>). "
-                f"Abaixo você vê as ações recomendadas para compra, o <b>peso sugerido (%)</b> de cada uma, "
-                f"o preço de entrada no início do mês e a evolução até hoje (<b>{end_dt}</b>).",
+                f"Esta é a alocação calculada no 1º pregão do mês (**{rebal_dt}**). "
+                f"Abaixo você vê as ações recomendadas para compra, o **peso sugerido (%)** de cada uma, "
+                f"o preço de entrada no início do mês e a evolução até hoje (**{end_dt}**).",
                 icon="🎯",
             )
 
@@ -1287,9 +1287,9 @@ with tab_explain:
             "vol_ratio": "Aceleração de Volume (5d vs. 21d)",
         }
         df_imp["Nome_Feature"] = df_imp["Feature"].map(feature_name_map).fillna(df_imp["Feature"])
-        df_imp["Ridge_Beta_bps"] = df_imp["Ridge_Beta"] * 10000.0
-        df_imp["XGBoost_Gain_pct"] = df_imp["XGBoost_Gain"] * 100.0
-        df_imp["LightGBM_Gain_pct"] = df_imp["LightGBM_Gain"] * 100.0
+        df_imp["Ridge_Beta_bps"] = (df_imp["Ridge_Beta"] * 10000.0).round(1)
+        df_imp["XGBoost_Gain_pct"] = (df_imp["XGBoost_Gain"] * 100.0).round(1)
+        df_imp["LightGBM_Gain_pct"] = (df_imp["LightGBM_Gain"] * 100.0).round(1)
 
         imp_model_choice = st.radio(
             "Selecione o Modelo para Visualizar a Importância dos Atributos:",
@@ -1341,6 +1341,7 @@ with tab_explain:
                 text="LightGBM_Gain_pct",
             )
 
+        fig_imp.update_traces(texttemplate="%{text:.1f}")
         fig_imp.update_layout(template="plotly_dark", height=460)
         st.plotly_chart(fig_imp, use_container_width=True)
 
