@@ -195,10 +195,10 @@ weighting_choice = st.sidebar.radio(
     "Política de Construção de Carteira:",
     [
         "Soft Weighting (Top 15 Rank Linear)",
-        "Hard Cut (Top 10 1/N com Histerese)",
+        "Hard Cut (Top 10 com Margem de Tolerância)",
     ],
     index=0,
-    help="Soft Weighting aloca pesos decrescentes no Top 15 (elimina efeito falésia). Hard Cut aloca 10% igualmente no Top 10 com buffer de manutenção.",
+    help="Soft Weighting aloca pesos decrescentes no Top 15 (elimina efeito falésia). Hard Cut aloca 10% igualmente no Top 10 com margem de tolerância anti-giro.",
 )
 
 st.sidebar.markdown("---")
@@ -217,7 +217,7 @@ model_map = {
     "LightGBM (Leaf-Wise Tree)": "Lightgbm",
 }
 scheme_suffix = "SoftWeight" if "Soft" in weighting_choice else "HardCut"
-scheme_label = "Soft Weighting (Top 15 Rank Linear)" if "Soft" in weighting_choice else "Hard Cut (Top 10 1/N com Histerese)"
+scheme_label = "Soft Weighting (Top 15 Rank Linear)" if "Soft" in weighting_choice else "Hard Cut (Top 10 com Margem de Tolerância)"
 
 # -------------------------------------------------------------
 # MAIN APP HEADER

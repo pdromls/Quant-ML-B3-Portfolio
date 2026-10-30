@@ -1,6 +1,6 @@
 # Cross-Sectional Machine Learning e Backtesting Orientado a Eventos na B3 (IBrX 50)
 
-Um pipeline quantitativo em Python para seleção cross-sectional de ações no mercado financeiro brasileiro (B3 — Universo IBrX 50, 2012–2026), acompanhado de um terminal analítico web interativo desenvolvido em Streamlit.
+Um pipeline quantitativo em Python para seleção cross-sectional de ações no mercado financeiro brasileiro (B3 — Universo IBrX 50, 2012–2026), acompanhado de um terminal analítico web interativo desenvolvido em Streamlit e um relatório executivo em Jupyter Notebook.
 
 O foco metodológico do projeto concentra-se na integridade científica:
 - Engenharia de atributos estritamente causal (sem viés de antecipação ou look-ahead bias).
@@ -34,7 +34,7 @@ A barra lateral permite configurar os parâmetros mestres de toda a sessão:
   - LightGBM: Algoritmo de gradient boosted trees com divisão ótima por folha (leaf-wise).
 - Política de Ponderação de Carteira:
   - Soft Weighting (Top 15 com decaimento linear): Aloca pesos decrescentes proporcionais (12,50% para o 1º colocado até 0,83% para o 15º), mitigando sensibilidade a empates e empurrando o retorno para +1.568,85% com Sharpe 1,02.
-  - Hard Cut (Top 10 equiponderado 1/N com histerese): Aloca 10% fixos para as 10 melhores ações, aplicando zona morta de ranking para evitar giro excessivo.
+  - Hard Cut (Top 10 com Margem de Tolerância): Aloca 10% fixos para as 10 melhores ações, aplicando uma margem de tolerância no ranking (filtro anti-giro) para evitar compras e vendas desnecessárias por variações mínimas de score.
 
 ---
 
@@ -165,11 +165,11 @@ Resultados apurados em 142 rebalanceamentos mensais com retreino móvel anual:
 | Modelo | Política de Ponderação | Retorno Acumulado (%) | CAGR (% a.a.) | Volatilidade (% a.a.) | Sharpe Ratio | Max Drawdown (%) | Alpha vs. Universo (% a.a.) |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
 | Buy & Hold (Universo) | Equiponderado (1/N) | +615,00% | 19,74% | 24,26% | 0,81 | -37,16% | 0,00% |
-| ML: RIDGE | Hard Cut (Top 10 1/N com Histerese) | +1.415,50% | 28,28% | 27,93% | 1,01 | -39,34% | +8,54% |
+| ML: RIDGE | Hard Cut (Top 10 com Margem de Tolerância) | +1.415,50% | 28,28% | 27,93% | 1,01 | -39,34% | +8,54% |
 | ML: RIDGE | Soft Weighting (Top 15 Rank Linear) | +1.568,85% | 29,41% | 28,81% | 1,02 | -35,23% | +9,67% |
-| ML: XGBOOST | Hard Cut (Top 10 1/N com Histerese) | +827,44% | 22,63% | 29,17% | 0,78 | -45,89% | +2,89% |
+| ML: XGBOOST | Hard Cut (Top 10 com Margem de Tolerância) | +827,44% | 22,63% | 29,17% | 0,78 | -45,89% | +2,89% |
 | ML: XGBOOST | Soft Weighting (Top 15 Rank Linear) | +862,40% | 23,05% | 28,59% | 0,81 | -40,82% | +3,31% |
-| ML: LIGHTGBM | Hard Cut (Top 10 1/N com Histerese) | +777,54% | 22,01% | 29,27% | 0,75 | -41,76% | +2,27% |
+| ML: LIGHTGBM | Hard Cut (Top 10 com Margem de Tolerância) | +777,54% | 22,01% | 29,27% | 0,75 | -41,76% | +2,27% |
 | ML: LIGHTGBM | Soft Weighting (Top 15 Rank Linear) | +670,39% | 20,57% | 28,74% | 0,72 | -42,05% | +0,83% |
 
 Vantagens da Ponderação Suave (Soft Weighting):
@@ -178,22 +178,16 @@ Vantagens da Ponderação Suave (Soft Weighting):
 
 ---
 
-### 4. Visualizações Geradas pelo Pipeline
+### 4. Relatório Visual em Jupyter Notebook (notebooks/01_ml_quant_strategies_b3.ipynb)
 
-#### Importância dos Atributos Técnicos (Ganho de Informação e Coeficientes Beta)
-![Importância dos Atributos](outputs/figures/01_feature_importance.png)
+Para manter a documentação no README limpa, leve e focada na arquitetura, todas as visualizações gráficas geradas pelo pipeline estão reunidas no Jupyter Notebook demonstrativo (`notebooks/01_ml_quant_strategies_b3.ipynb`) e disponíveis de forma dinâmica no terminal Streamlit (`app.py`).
 
-#### Resumo de Métricas de Machine Learning no Teste Puro Out-of-Sample
-![Métricas de Teste](outputs/figures/02_test_metrics_summary.png)
-
-#### Retorno Acumulado Composto do Top 10 vs. Buy & Hold do Universo
-![Retorno Top 10 vs Universo](outputs/figures/03_top10_cumulative_alpha.png)
-
-#### Simulação Walk-Forward (12 Anos): Retreino Periódico vs. Modelos Congelados
-![Walk-Forward vs Congelado](outputs/figures/04_walkforward_vs_frozen_comparison.png)
-
-#### Comparação de Políticas de Portfólio: Hard Cut (Top 10) vs. Soft Weighting (Top 15)
-![Hard Cut vs Soft Weighting](outputs/figures/05_weighting_schemes_comparison.png)
+Ao abrir e executar o notebook, você tem acesso a:
+- Importância dos atributos técnicos (coeficientes Beta em basis points para Ridge e ganho de informação para XGBoost e LightGBM).
+- Resumo gráfico das métricas de Machine Learning na partição de Teste Puro Out-of-Sample (RMSE, MAE, R², IC e Rank IC).
+- Curva de excesso de retorno acumulado (Alpha) da seleção Top 10 frente ao Buy & Hold do Universo.
+- Comparativo multi-ano de Walk-Forward com retreino periódico anual vs. modelos congelados ao longo de 12 anos.
+- Gráficos comparativos entre as políticas de construção de portfólio (Hard Cut com Margem de Tolerância vs. Soft Weighting Top 15).
 
 ---
 
@@ -223,14 +217,14 @@ quant-ml-b3-portfolio/
 │   ├── export_dashboard_data.py           # Pipeline que gera as tabelas completas para o Streamlit
 │   └── update_market_data_to_today.py     # Script para sincronizar dados de mercado até a data corrente
 ├── notebooks/
-│   └── 01_ml_quant_strategies_b3.ipynb    # Jupyter Notebook demonstrativo pré-executado
+│   └── 01_ml_quant_strategies_b3.ipynb    # Jupyter Notebook executado com análise passo a passo
 ├── outputs/
 │   ├── figures/                           # Visualizações estáticas em PNG
 │   └── tables/                            # Séries temporais, carteiras e retornos em CSV
 └── tests/                                 # Suíte automatizada de testes com pytest
     ├── test_features_and_splits.py        # Validação de causalidade, purga e Z-score
     ├── test_models_and_metrics.py         # Validação de convergência de modelos e métricas
-    └── test_walk_forward.py               # Validação de motor e histerese do Walk-Forward
+    └── test_walk_forward.py               # Validação de motor e margem de tolerância do Walk-Forward
 ```
 
 ---
@@ -250,12 +244,17 @@ streamlit run app.py
 ```
 O dashboard será aberto no navegador em `http://localhost:8501`.
 
-### 3. Executar os Testes Automatizados (pytest)
+### 3. Abrir o Relatório em Jupyter Notebook
+```bash
+jupyter notebook notebooks/01_ml_quant_strategies_b3.ipynb
+```
+
+### 4. Executar os Testes Automatizados (pytest)
 ```bash
 pytest -v
 ```
 
-### 4. Executar os Pipelines de Modelagem e Exportação
+### 5. Executar os Pipelines de Modelagem e Exportação
 ```bash
 # Executar os experimentos de Machine Learning e simulação Walk-Forward:
 python scripts/run_experiment.py
