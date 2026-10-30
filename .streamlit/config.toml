@@ -1,0 +1,52 @@
+# Tema visual do Quant Alpha Terminal.
+# Light e Dark ficam disponíveis no menu do app (⋮ → Settings → Theme);
+# o padrão segue a preferência do sistema operacional.
+
+[theme]
+font = "'IBM Plex Sans':https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap, sans-serif"
+codeFont = "'IBM Plex Mono':https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap, monospace"
+baseFontSize = 14
+baseRadius = "0.6rem"
+buttonRadius = "0.5rem"
+showWidgetBorder = true
+showSidebarBorder = true
+blueColor = "#4C6EF5"
+orangeColor = "#E09A2B"
+violetColor = "#9061F9"
+chartCategoricalColors =["#4C6EF5", "#E09A2B", "#9061F9", "#8B93A1", "#1FA2C0", "#1F9D63", "#E5484D"]
+
+[theme.light]
+primaryColor = "#3553D6"
+backgroundColor = "#F6F5F1"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#15171C"
+borderColor = "#E2DFD7"
+dataframeBorderColor = "#ECEAE4"
+dataframeHeaderBackgroundColor = "#F9F8F5"
+linkColor = "#3553D6"
+codeBackgroundColor = "#F1EFEA"
+greenColor = "#1E8656"
+redColor = "#C33F38"
+
+[theme.light.sidebar]
+backgroundColor = "#EFEDE7"
+secondaryBackgroundColor = "#FFFFFF"
+borderColor = "#E2DFD7"
+
+[theme.dark]
+primaryColor = "#7089FF"
+backgroundColor = "#0C0F14"
+secondaryBackgroundColor = "#151A22"
+textColor = "#E7E9EE"
+borderColor = "#252C38"
+dataframeBorderColor = "#1E242E"
+dataframeHeaderBackgroundColor = "#11151C"
+linkColor = "#8DA2FF"
+codeBackgroundColor = "#151A22"
+greenColor = "#3FC58B"
+redColor = "#F0675F"
+
+[theme.dark.sidebar]
+backgroundColor = "#0F131A"
+secondaryBackgroundColor = "#151A22"
+borderColor = "#222935"

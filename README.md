@@ -1,105 +1,144 @@
 # Cross-Sectional Machine Learning e Backtesting Orientado a Eventos na B3 (IBrX 50)
 
-Um pipeline quantitativo em Python para seleção cross-sectional de ações no mercado financeiro brasileiro (B3 — Universo IBrX 50, 2012–2026), acompanhado de um terminal analítico web interativo desenvolvido em Streamlit e um relatório executivo em Jupyter Notebook.
+Pipeline quantitativo em Python para seleção cross-sectional de ações na B3 (universo IBrX 50, 2012–2026), com um terminal analítico web em Streamlit e um relatório executivo em Jupyter Notebook.
 
-O foco metodológico do projeto concentra-se na integridade científica:
+**Acesse o terminal online:** https://quant-ml-b3.streamlit.app
+
+O link abre o terminal completo no navegador, sem instalar nada. Se o app estiver hibernando por falta de acessos, clique em "Yes, get this app back up!" e aguarde cerca de um minuto.
+
+---
+
+## Como Usar
+
+Há três formas de abrir o terminal. Todas mostram o mesmo app.
+
+| Opção | Quando usar | Requisitos |
+| :--- | :--- | :--- |
+| Online (Streamlit Community Cloud) | Ver o projeto rapidamente ou compartilhar | Apenas um navegador |
+| Docker | Rodar localmente com um comando, sem configurar Python | Docker instalado |
+| Python local | Rodar o app, os testes, o notebook e os pipelines de modelagem | Python 3.10+ |
+
+### Opção 1: Online
+
+Acesse https://quant-ml-b3.streamlit.app.
+
+### Opção 2: Docker
+
+No diretório raiz do projeto:
+```bash
+docker compose up
+```
+O container instala as dependências, configura o ambiente Linux com suporte multithread para LightGBM/XGBoost e publica o terminal em `http://localhost:8501`.
+
+### Opção 3: Python local
+
+#### 1. Instalar as dependências
+```bash
+git clone https://github.com/pdromls/Quant-ML-B3-Portfolio.git
+cd Quant-ML-B3-Portfolio
+pip install -r requirements-dev.txt
+```
+`requirements.txt` contém apenas o necessário para o terminal web. `requirements-dev.txt` acrescenta pytest e Jupyter.
+
+#### 2. Abrir o terminal web
+```bash
+streamlit run app.py
+```
+O terminal abre no navegador em `http://localhost:8501`.
+
+#### 3. Abrir o relatório em Jupyter Notebook
+```bash
+jupyter notebook notebooks/01_ml_quant_strategies_b3.ipynb
+```
+
+#### 4. Executar os testes automatizados
+```bash
+pytest -v
+```
+
+#### 5. Reexecutar os pipelines de modelagem e exportação
+```bash
+# Experimentos de Machine Learning e simulação Walk-Forward:
+python scripts/run_experiment.py
+
+# Exportar tabelas atualizadas para o terminal:
+python scripts/export_dashboard_data.py
+```
+
+---
+
+## Guia do Terminal Web
+
+### Tema claro e escuro
+O terminal segue o tema do sistema operacional. Para trocar manualmente, abra o menu ⋮ no canto superior direito → Settings → Theme e escolha Light ou Dark.
+
+### Ícone de informação
+Todo gráfico e tabela tem um ícone de informação no canto superior direito. Ele abre uma janela explicando o que o gráfico mostra, como ler e de onde vêm os dados. Os gráficos principais também trazem um quadro "Como ler" logo abaixo.
+
+### Barra lateral (controles globais)
+- **Fonte de dados**
+  - Base local: opção padrão. Carrega a base tratada de 41 ações do IBrX 50 (3.667 pregões auditados).
+  - Yahoo Finance: sincroniza cotações recentes da B3. O botão "Atualizar cotações" baixa novos preços e "Resetar" volta para a base local.
+- **Modelo de Machine Learning**
+  - Regressão Ridge: modelo linear com regularização L2.
+  - XGBoost: gradient boosted trees com divisão por profundidade (depth-wise).
+  - LightGBM: gradient boosted trees com divisão ótima por folha (leaf-wise).
+  - Comparar todos os modelos: sobrepõe as três estratégias.
+- **Construção de carteira**
+  - Soft Weighting (Top 15): pesos decrescentes por rank, de 12,50% para o 1º colocado até 0,83% para o 15º, reduzindo a sensibilidade a empates.
+  - Hard Cut (Top 10): 10% fixos para as 10 melhores ações, com margem de tolerância no ranking (filtro anti-giro) para evitar trocas por variações mínimas de score.
+- **Metodologia quant**: resumo dos parâmetros fixos (rebalanceamento mensal no 1º pregão, z-score cross-sectional, purga de 21 dias, custo de 0,15% por transação, alvo de excesso de retorno em 21 dias).
+
+### Aba 1: Desempenho histórico (2015–2026)
+Avalia a performance de longo prazo das estratégias contra o mercado.
+- **Indicadores principais:** retorno total, CAGR, Sharpe, volatilidade, max drawdown e alpha líquido do modelo selecionado, cada um comparado ao Buy & Hold do universo.
+- **Curva de patrimônio acumulado:** retorno composto do modelo contra o Buy & Hold 1/N e o Ibovespa (BOVA11), em escala linear ou logarítmica.
+- **Drawdown:** gráfico separado mostrando quanto cada carteira está abaixo do seu pico anterior, com tabela de pior queda, período pico → fundo, tempo de recuperação e situação atual.
+- **Tabela resumo comparativa:** retorno acumulado, CAGR, volatilidade anual, Sharpe, max drawdown, turnover médio mensal e alpha vs. universo para todas as combinações de modelo e política. A seleção atual fica destacada e o melhor valor de cada coluna aparece em verde.
+
+### Aba 2: Previsão vs. realidade
+Mostra exatamente o que cada modelo recomendou comprar e o que aconteceu no mercado. O modelo é escolhido no topo da aba (Ridge, XGBoost, LightGBM ou os três lado a lado). Há três modos de inspeção:
+
+1. **Visão anual**
+   - Seletor de ano (2015 a 2026, com o ano corrente por padrão).
+   - Cartões com o resultado do ano de cada modelo, do Buy & Hold e do Ibovespa, além do alpha.
+   - Evolução acumulada dentro do ano, retornos mês a mês em barras e tabela mensal com score previsto, retorno do modelo, benchmarks, alpha e a principal ação escolhida.
+
+2. **Por pregão**
+   - Calendário (DD/MM/AAAA) para escolher qualquer dia da série.
+   - Se o dia escolhido não teve pregão (fim de semana ou feriado), o terminal avisa e usa o pregão imediatamente anterior.
+   - Botões "Pregão anterior", "Próximo pregão" e "Mais recente" navegam apenas entre pregões reais.
+   - Compara o preço de entrada no 1º pregão do mês (data da recomendação) com o fechamento do dia escolhido.
+   - Gráfico de barras com cores semânticas (verde quando a ação superou o Buy & Hold do universo, vermelho quando ficou abaixo) e linhas de referência para Buy & Hold e Ibovespa, ordenável por rank do modelo ou por retorno.
+
+3. **Mês a mês**
+   - Seletor com os 142 meses da série e botões "Mês anterior", "Próximo mês" e "Mais recente".
+   - Cartões, gráfico por ação e tabela da carteira recomendada: posição, ticker, score previsto, peso, preços de entrada e de saída, retorno, contribuição e se a ação bateu o mercado. A soma das contribuições aparece abaixo da tabela e corresponde ao retorno da carteira.
+
+### Aba 3: Explicabilidade das features
+Mostra os fundamentos econômicos das decisões dos modelos.
+- Gráfico de barras horizontais por modelo:
+  - Regressão Ridge: coeficientes beta padronizados em basis points (verde favorece a ação, vermelho penaliza).
+  - XGBoost: ganho de informação (%) por divisão de nó.
+  - LightGBM: ganho de informação (%) por folha.
+- Os 12 indicadores técnicos, com nomes em português: volatilidade realizada (21 dias), posição nas Bandas de Bollinger, momentum trimestral (63 dias), retornos de 21, 10, 5 e 1 dia, RSI (14 dias), inclinação entre médias (SMA 20/50), distância das médias móveis de 50 e 20 dias e aceleração de volume (5d vs. 21d).
+- Interpretação financeira dos fatores mais relevantes (`ret_63d`, `ret_1d`, `bb_pos` e `vol_21d`).
+
+### Aba 4: Auditoria de qualidade de dados
+- O botão "Executar auditoria de dados agora" roda as verificações formais sobre as matrizes de preço e volume.
+- Mostra o status, as dimensões da base, a cobertura média de ações ativas e um checklist (cronologia estrita, ausência de datas duplicadas, de valores infinitos e de preços não positivos), com o relatório completo em texto.
+
+---
+
+## Sobre o Projeto
+
+O foco metodológico do projeto é a integridade científica:
 - Engenharia de atributos estritamente causal (sem viés de antecipação ou look-ahead bias).
 - Padronização diária cross-sectional via Z-Score com winsorização [-4, +4], neutralizando o viés macroeconômico direcional e isolando o alpha relativo.
 - Divisão temporal cronológica 70/20/10 com purga e embargo temporal de 21 dias úteis nas fronteiras de Treino, Validação e Teste, impedindo vazamento de dados futuros (data leakage).
 - Simulação Walk-Forward ao longo de 12 anos (2015–2026, totalizando 142 rebalanceamentos mensais) para testar empiricamente o fenômeno de concept drift, confrontando modelos com retreino periódico anual contra modelos estáticos (congelados).
 - Política de alocação suave (Soft Weighting Top 15), eliminando a sensibilidade a empates e o efeito falésia (cliff edge) inerente ao corte rígido tradicional (Hard Cut Top 10).
 - Comparação sistemática com os dois benchmarks oficiais de mercado: o Buy & Hold do Universo (média equiponderada 1/N de todas as ações elegíveis) e o Ibovespa (ETF BOVA11).
-
----
-
-## Guia Completo de Uso do Terminal Web (Streamlit)
-
-O projeto disponibiliza uma interface visual analítica desenvolvida em Streamlit (`app.py`), permitindo auditoria forense, simulação e acompanhamento de carteiras recomendadas.
-
-### 1. Inicialização da Aplicação
-No terminal do seu ambiente (com as dependências instaladas), execute:
-```bash
-streamlit run app.py
-```
-A aplicação abrirá automaticamente no navegador em `http://localhost:8501`.
-
-### 2. Controles Globais na Barra Lateral (Sidebar)
-A barra lateral permite configurar os parâmetros mestres de toda a sessão:
-- Fonte de Dados:
-  - Base Local Higienizada (2012-2026): Opção padrão e recomendada. Carrega instantaneamente a base de dados tratada de 41 ações do IBrX 50, contendo 3.667 pregões auditados até a data presente.
-  - API Yahoo Finance (Ao Vivo): Permite sincronizar cotações em tempo real da B3. Conta com o botão "Atualizar Cotações via API" para baixar novas cotações e "Resetar API" para restaurar a base local.
-- Modelo de Machine Learning:
-  - Regressão Ridge: Modelo linear regularizado com penalidade L2.
-  - XGBoost: Algoritmo de gradient boosted trees com divisão por profundidade (depth-wise).
-  - LightGBM: Algoritmo de gradient boosted trees com divisão ótima por folha (leaf-wise).
-- Política de Ponderação de Carteira:
-  - Soft Weighting (Top 15 com decaimento linear): Aloca pesos decrescentes proporcionais (12,50% para o 1º colocado até 0,83% para o 15º), mitigando sensibilidade a empates e empurrando o retorno para +1.568,85% com Sharpe 1,02.
-  - Hard Cut (Top 10 com Margem de Tolerância): Aloca 10% fixos para as 10 melhores ações, aplicando uma margem de tolerância no ranking (filtro anti-giro) para evitar compras e vendas desnecessárias por variações mínimas de score.
-
----
-
-### 3. Navegação entre as Abas do Terminal
-
-#### Aba 1: Visão Geral e Curvas Históricas Acumuladas (2015–2026)
-Objetivo: Avaliar a performance de longo prazo das estratégias contra o mercado.
-- Gráfico Patrimonial Composto: Exibe a curva de capital acumulada comparando os três modelos de Machine Learning (Ridge, XGBoost e LightGBM) contra os dois índices de mercado (Buy & Hold 1/N e Ibovespa BOVA11).
-- Tabela Executiva de Métricas Institucionais: Apresenta lado a lado métricas auditadas de Retorno Acumulado (%), CAGR (% a.a.), Volatilidade Anualizada (%), Índice de Sharpe, Drawdown Máximo (%), Taxa de Sucesso Mensal (%) e Alpha Excedente vs. Mercado.
-- Controles de Período: Permite ajustar a janela temporal de visualização entre 2015 e 2026.
-
-#### Aba 2: Previsão vs. Realidade (Auditoria de Decisões e Calendário de Pregões)
-Objetivo: Inspecionar exatamente o que cada modelo recomendou comprar e verificar o que aconteceu no mercado real.
-
-Esta aba possui 3 modos de inspeção selecionáveis via radio button:
-
-1. Visão Compacta por Ano (Histórico Completo 2015–2026):
-   - Seletor de Ano: Permite escolher qualquer ano da série histórica (2015 a 2026, com o ano corrente selecionado por padrão).
-   - Exibe 5 cartões KPI consolidados do ano escolhido (Ridge, XGBoost, LightGBM, Buy & Hold Universo e Ibovespa).
-   - Apresenta o gráfico de evolução de capital ao longo daquele ano.
-   - Apresenta gráfico de barras com os retornos mês a mês para auditar a consistência das previsões.
-   - Tabela detalhada mês a mês com retorno do modelo, retorno do benchmark, Alpha e taxa de acerto.
-
-2. Inspeção Pontual por Data Específica (Calendário de Pregões Diários):
-   - Seletor de Calendário (DD/MM/AAAA): Permite clicar e abrir o calendário interativo para selecionar qualquer dia específico da série histórica (2015 a 2026).
-   - Trava e Snap Inteligente de Dias Úteis: Se o usuário selecionar um sábado, domingo ou feriado da B3, o sistema exibe uma mensagem informativa e ajusta automaticamente o cálculo para o pregão imediatamente anterior com cotação oficial.
-   - Barra de Navegação Rápida: Botões [Pregão Anterior], [Próximo Pregão] e [Hoje / Mais Recente] para avançar ou recuar dia a dia apenas entre pregões reais da bolsa.
-   - Apuração de Cotações Reais: Compara o preço de compra no 1º pregão do mês (data base da recomendação T0) com o preço de fechamento no dia selecionado (T).
-   - Alternador de Ordenação: Opção para visualizar o gráfico na ordem de recomendação do modelo (maior peso para o menor) ou ordenado do melhor desempenho para o pior.
-   - Gráfico de Barras com Cores Semânticas: Ações com retorno superior ao benchmark são coloridas em verde; ações com retorno inferior são coloridas em vermelho. Inclui linhas de referência horizontais para Buy & Hold e Ibovespa.
-   - Modo Comparativo Lado a Lado: Se a opção "Comparar os 3 Modelos Lado a Lado" for selecionada, o dashboard renderiza o confronto simultâneo de Ridge, XGBoost e LightGBM na data escolhida.
-
-3. Auditoria Mês a Mês (Histórico Completo 2015–2026):
-   - Navegação Rápida entre Meses: Botões [◀ Mês Anterior], [Próximo Mês ▶] e [Mês Mais Recente] para percorrer a história mês a mês sem necessidade de reabrir o seletor.
-   - Seletor dropdown cobrindo todos os 142 meses da série temporal para análise individual detalhada.
-   - Alternador de Ordenação: Permite alternar entre ordenação por recomendação do modelo (maior peso / rank) ou por melhor retorno percentual.
-
-#### Aba 3: Explicabilidade e Importância Econômica dos Fatores
-Objetivo: Compreender os fundamentos econômicos por trás das decisões dos modelos.
-- Gráficos de Barras Horizontais com Nomes Intuitivos em Português:
-  - Regressão Ridge: Coeficientes Beta Padronizados expressos em basis points (bps).
-  - XGBoost: Importância por ganho de informação (Gain %) em nível de nó.
-  - LightGBM: Importância por ganho percentual por folha (leaf-wise split).
-- Mapeamento Claro dos 12 Indicadores Técnicos:
-  - Volatilidade Realizada (21 dias)
-  - Posição nas Bandas de Bollinger
-  - Momentum Trimestral (Retorno 63d)
-  - Retorno Mensal (21 dias)
-  - Retorno Quinzenal (10 dias)
-  - Retorno Semanal (5 dias)
-  - Retorno Diário (1 dia)
-  - RSI - Força Relativa (14 dias)
-  - Inclinação entre Médias (SMA 20/50)
-  - Distância da Média Móvel de 50 dias
-  - Distância da Média Móvel de 20 dias
-  - Aceleração de Volume (5d vs. 21d)
-- Interpretação Financeira dos Fatores:
-  - ret_63d positivo: Captura o efeito Momentum trimestral da literatura quantitativa clássica.
-  - ret_1d e bb_pos negativos: Refletem o filtro de sobrecompra e reversão de curto prazo, penalizando ativos sobrecomprados.
-  - vol_21d: Principal variável de calibração do prêmio de risco nos modelos de árvore.
-
-#### Aba 4: Data Quality Assurance e Validação de Integridade
-Objetivo: Auditar a base de dados subjacente.
-- Botão "Executar Auditoria de Dados Agora": Dispara um teste automatizado formal em todas as matrizes de preço e volume.
-- Validação em tempo real de ausência de valores nulos, infinitos, preços não positivos e sincronismo temporal (status: 100% aprovado).
 
 ---
 
@@ -209,12 +248,15 @@ Ao abrir e executar o notebook, você tem acesso a:
 ```text
 quant-ml-b3-portfolio/
 ├── app.py                                 # Terminal Web Interativo em Streamlit
+├── .streamlit/
+│   └── config.toml                        # Temas claro/escuro, fontes e paleta do terminal
 ├── Dockerfile                             # Imagem containerizada otimizada (Python 3.11 + libgomp1)
 ├── docker-compose.yml                     # Orquestrador para execução com 1 comando
 ├── .dockerignore                          # Filtro de arquivos para o build do container
 ├── README.md                              # Documentação técnica completa
 ├── pyproject.toml                         # Configurações de empacotamento moderno e pytest
-├── requirements.txt                       # Dependências do projeto
+├── requirements.txt                       # Dependências do terminal web (usadas no Docker e na nuvem)
+├── requirements-dev.txt                   # requirements.txt + pytest e Jupyter
 ├── .gitignore                             # Filtro de arquivos locais e temporários
 ├── data/
 │   └── processed/                         # Cotações históricas tratadas (41 ações IBrX 50 + BOVA11/BRAX11)
@@ -227,13 +269,16 @@ quant-ml-b3-portfolio/
 │       ├── models.py                      # Algoritmos Ridge, XGBoost e LightGBM
 │       ├── metrics.py                     # Métricas quantitativas (IC, Rank IC, Sharpe, Drawdown, Alpha)
 │       ├── walk_forward.py                # Motor de simulação Walk-Forward multi-ano
-│       └── plotting.py                    # Gráficos para relatórios
+│       ├── plotting.py                    # Gráficos para relatórios
+│       └── ui.py                          # Camada visual do terminal (cartões, painéis, modais, estilo dos gráficos)
 ├── scripts/
 │   ├── run_experiment.py                  # CLI para rodar o pipeline clássico 70/20/10 e Walk-Forward
 │   ├── export_dashboard_data.py           # Pipeline que gera as tabelas completas para o Streamlit
 │   └── update_market_data_to_today.py     # Script para sincronizar dados de mercado até a data corrente
 ├── notebooks/
 │   └── 01_ml_quant_strategies_b3.ipynb    # Jupyter Notebook executado com análise passo a passo
+├── docs/
+│   └── design/                            # Capturas e mockups do terminal (temas claro e escuro)
 ├── outputs/
 │   ├── figures/                           # Visualizações estáticas em PNG
 │   └── tables/                            # Séries temporais, carteiras e retornos em CSV
@@ -243,52 +288,6 @@ quant-ml-b3-portfolio/
     └── test_walk_forward.py               # Validação de motor e margem de tolerância do Walk-Forward
 ```
 
----
-
-## Como Executar o Projeto
-
-### Opção A: Execução via Docker (Recomendado / 1 Comando)
-Caso possua o Docker instalado, basta executar no diretório raiz:
-```bash
-docker compose up
-```
-O container baixará as dependências, configurará o ambiente Linux com suporte multithread para LightGBM/XGBoost e disponibilizará o terminal web em `http://localhost:8501`.
-
-### Opção B: Execução Local com Python
-
-#### 1. Instalação das Dependências
-```bash
-git clone https://github.com/pdromls/quant-ml-b3-portfolio.git
-cd quant-ml-b3-portfolio
-pip install -r requirements.txt
-```
-
-#### 2. Executar o Terminal Web Streamlit
-```bash
-streamlit run app.py
-```
-O dashboard será aberto no navegador em `http://localhost:8501`.
-
-#### 3. Abrir o Relatório em Jupyter Notebook
-```bash
-jupyter notebook notebooks/01_ml_quant_strategies_b3.ipynb
-```
-
-#### 4. Executar os Testes Automatizados (pytest)
-```bash
-pytest -v
-```
-
-#### 5. Executar os Pipelines de Modelagem e Exportação
-```bash
-# Executar os experimentos de Machine Learning e simulação Walk-Forward:
-python scripts/run_experiment.py
-
-# Exportar dados atualizados para o dashboard:
-python scripts/export_dashboard_data.py
-```
-
----
 
 ## Autor
 

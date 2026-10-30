@@ -1,0 +1,5 @@
+# Ferramentas de desenvolvimento: testes e notebook (o app web usa apenas requirements.txt)
+-r requirements.txt
+pytest>=7.4.0
+jupyter>=1.0.0
+nbformat>=5.9.0
